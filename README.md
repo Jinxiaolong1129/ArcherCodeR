@@ -26,7 +26,7 @@
 The Archer series focuses on research into RL algorithms and training for medium and small-scale models, aiming to deepen the community's understanding of the fundamental principles of reinforcement learning (RL) on large language models (LLMs). All released content will be comprehensively open-sourced to advance community research development.
 
 <div align="center">
-<img src="assets/combined_math_code_benchmarks.pdf" width="100%"/>
+<img src="assets/combined_math_code_benchmarks.png" width="100%"/>
 
 <sub>ArcherCodeR-1.5B-DAPO achieves progressive improvements on LiveCodeBench (LCB), reaching 27.24% LCB score.</sub>
 </div>
