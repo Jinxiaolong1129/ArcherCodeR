@@ -29,7 +29,7 @@ v_max_response_length=$((1024 * 32))
 
 train_prompt_bsz=64
 gen_prompt_bsz=$((train_prompt_bsz * 1))
-train_prompt_mini_bsz=16
+train_prompt_mini_bsz=32
 
 # Paths
 MODEL_PATH=./models/DeepSeek-R1-Distill-Qwen-1.5B
