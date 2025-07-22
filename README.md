@@ -4,7 +4,7 @@
 # ✨ Archer
 
 <div>
-🏹️  Reinforcement Learning for Enhanced Code&Math Reasoning in LLMs  🎯
+🏹️  Reinforcement Learning for Enhanced Reasoning in LLMs  🎯
 </div>
 
 </div>
@@ -31,7 +31,7 @@ The Archer series focuses on research into RL algorithms and training for medium
 <sub>Archer significantly improves the reasoning performance upon DAPO and outperforms previous 1.5B-level SOTA reasoning models.</sub>
 </div>
 
-**Archer** is an open-source initiative enhancing code&math reasoning in large language models through scalable, rule-governed reinforcement learning. We provide full-stack reproducibility including:
+**Archer** is an open-source initiative enhancing reasoning in large language models through scalable, rule-governed reinforcement learning. We provide full-stack reproducibility including:
 
 - Training code and pipelines
 - Curated datasets

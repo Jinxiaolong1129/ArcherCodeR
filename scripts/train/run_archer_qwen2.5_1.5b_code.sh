@@ -69,9 +69,6 @@ high_entropy_clip_ratio_high=0.5
 # Trainer
 use_overlong_filter=False
 
-# Algorithm
-use_overlong_penalty=False
-
 
 python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
@@ -87,7 +84,6 @@ python -m dapo.main_dapo \
     algorithm.adv_estimator=${adv_estimator} \
     algorithm.use_kl_in_reward=${use_kl_in_reward} \
     algorithm.kl_ctrl.kl_coef=${kl_coef} \
-    algorithm.use_overlong_penalty=${use_overlong_penalty} \
     actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.kl_loss_type=${kl_loss_type} \
