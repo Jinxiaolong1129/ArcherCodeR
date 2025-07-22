@@ -28,10 +28,10 @@ The Archer series focuses on research into RL algorithms and training for medium
 <div align="center">
 <img src="assets/combined_math_code_benchmarks.png" width="100%"/>
 
-<sub>ArcherCodeR-1.5B-DAPO achieves progressive improvements on LiveCodeBench (LCB), reaching 27.24% LCB score.</sub>
+<sub>Archer significantly improves the reasoning performance upon DAPO and outperforms previous 1.5B-level SOTA reasoning models.</sub>
 </div>
 
-**ArcherCodeR** is an open-source initiative enhancing code reasoning in large language models through scalable, rule-governed reinforcement learning. We provide full-stack reproducibility including:
+**Archer** is an open-source initiative enhancing code reasoning in large language models through scalable, rule-governed reinforcement learning. We provide full-stack reproducibility including:
 
 - Training code and pipelines
 - Curated datasets
@@ -39,26 +39,17 @@ The Archer series focuses on research into RL algorithms and training for medium
 - Complete training logs
 
 **Current Models**:
-- **[ArcherCodeR-1.5B-DAPO](https://huggingface.co/wizardII/ArcherCodeR-1.5B-DAPO)** - achieves state-of-the-art performance on code tasks (LiveCodeBench) among comparable-scale models (excluding our final ArcherCodeR-1.5B). All training components for this model are now fully released.
-- **[ArcherCodeR-1.5B](https://huggingface.co/wizardII/ArcherCodeR-1.5B)** - SOTA among similarly-sized models (training pipeline releasing progressively)
+- **[Archer-Code-1.5B](https://huggingface.co/Fate-Zero/Archer-Code-1.5B)** - SOTA among similarly-sized models (training pipeline releasing progressively)
 
 ## Evaluation
 
-Performance on LiveCodeBench. The Pass@1 metric represents the average performance across 4 independent sampling attempts. To ensure consistency, we re-evaluated all comparable open-source models using identical evaluation scripts and parameters (temperature=0.8, max_gen_length=32k).
+Performance on LiveCodeBench. The Pass@1 metric represents the average performance across K independent sampling attempts. To ensure consistency, we re-evaluated all comparable open-source models using identical evaluation scripts and parameters (temperature=0.8, max_gen_length=32k).
 
 The detailed results are shown in the table below.
 
-| Model                                         | LCB (8/1/24-2/1/25)(Pass@1) | LCB (8/1/24-2/1/25)(Pass@4) |
-| --------------------------------------------- | --------------------------- | --------------------------- |
-| DeepSeek-R1-Distill-Qwen-1.5B                 | 16.9                        | —                           |
-| DeepSeek-R1-Distill-Qwen-1.5B(Tested)         | 16.40                       | 25.81                       |
-| DeepCoder-1.5B                                | 25.1                        | —                           |
-| DeepCoder-1.5B(Tested)                        | 23.03                       | 30.82                       |
-| Nemotron-Research-Reasoning-Qwen-1.5B         | 23.81                       | —                           |
-| Nemotron-Research-Reasoning-Qwen-1.5B(Tested) | 25.45                       | 34.40                       |
-| **ArcherCodeR-1.5B-DAPO**                     | 26.70                       | 36.56                       |
-| **ArcherCodeR-1.5B(32k)**                     | 28.49                       | 38.71                       |
-| **ArcherCodeR-1.5B(48k)**                     | 29.30                       | 39.07                       |
+<div align="center">
+<img src="assets/code_benchmark_table.png" width="100%"/>
+</div>
 
 Note:
 1. Evaluation variance for the same model is typically within ±0.5 across multiple runs.
@@ -106,7 +97,7 @@ Note: Hostfile locations vary across operating systems (e.g., on my machine, it'
 We have currently only provided the script and data to reproduce the results of the “ArcherCodeR-1.5B-DAPO”.
 
 ```bash
-bash ./scripts/train/run_dapo_qwen2.5_1.5b_code.sh
+bash ./scripts/train/run_archer_qwen2.5_1.5b_code.sh
 ```
 
 ### Evaluation
@@ -131,10 +122,26 @@ Note: Please update the path parameters in the scripts above as needed.
 
 ## Technical Report
 
-Coming soon.
+[Stabilizing Knowledge, Promoting Reasoning: Dual-Token Constraints for RLVR](https://arxiv.org/abs/2507.15778)
 
 ## Acknowledgements
 
 - We build our model upon [`DeepSeek-R1-Distill-Qwen-1.5B`](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B).
 - Training was carried out with a modified version of [verl](https://github.com/volcengine/verl).
+
+## Citation
+
+Please cite the following:
+
+```bibtex
+@misc{wang2025stabilizingknowledgepromotingreasoning,
+      title={Stabilizing Knowledge, Promoting Reasoning: Dual-Token Constraints for RLVR}, 
+      author={Jiakang Wang and Runze Liu and Fuzheng Zhang and Xiu Li and Guorui Zhou},
+      year={2025},
+      eprint={2507.15778},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2507.15778}, 
+}
+```
 
