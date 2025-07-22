@@ -91,7 +91,9 @@ We have provided a one-click script to initialize Ray environments on any number
 bash ./tools/start_ray.sh
 ```
 
-Note: Hostfile locations vary across operating systems (e.g., on my machine, it's located at /etc/mpi/hostfile). Locate the file on your server and modify its content accordingly.
+Note: 
+- Please replace your_wandb_api_key in export WANDB_API_KEY=your_wandb_api_key with your actual key.
+- Hostfile locations vary across operating systems (e.g., on my machine, it's located at /etc/mpi/hostfile). Locate the file on your server and modify its content accordingly.
 
 ### Training
 

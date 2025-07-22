@@ -42,6 +42,7 @@ export NCCL_MIN_NCHANNELS=16
 export NCCL_IB_HCA=mlx5
 export NCCL_DEBUG=WARN
 export HYDRA_FULL_ERROR=1
+export WANDB_API_KEY=your_wandb_api_key
 ray stop
 ray start --address="$HEAD_ADDRESS"
 EOF
