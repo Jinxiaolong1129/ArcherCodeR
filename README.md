@@ -1,10 +1,10 @@
 
 <div align="center">
 
-# ✨ ArcherCodeR
+# ✨ Archer
 
 <div>
-🏹️  Reinforcement Learning for Enhanced Code Reasoning in LLMs  🎯
+🏹️  Reinforcement Learning for Enhanced Code&Math Reasoning in LLMs  🎯
 </div>
 
 </div>
@@ -31,7 +31,7 @@ The Archer series focuses on research into RL algorithms and training for medium
 <sub>Archer significantly improves the reasoning performance upon DAPO and outperforms previous 1.5B-level SOTA reasoning models.</sub>
 </div>
 
-**Archer** is an open-source initiative enhancing code reasoning in large language models through scalable, rule-governed reinforcement learning. We provide full-stack reproducibility including:
+**Archer** is an open-source initiative enhancing code&math reasoning in large language models through scalable, rule-governed reinforcement learning. We provide full-stack reproducibility including:
 
 - Training code and pipelines
 - Curated datasets
@@ -42,19 +42,21 @@ The Archer series focuses on research into RL algorithms and training for medium
 - **[Archer-Code-1.5B](https://huggingface.co/Fate-Zero/Archer-Code-1.5B)** - SOTA among similarly-sized models (training pipeline releasing progressively)
 
 ## Evaluation
-
-Performance on LiveCodeBench. The Pass@1 metric represents the average performance across K independent sampling attempts. To ensure consistency, we re-evaluated all comparable open-source models using identical evaluation scripts and parameters (temperature=0.8, max_gen_length=32k).
-
-The detailed results are shown in the table below.
+We conduct evaluation on both mathematical and coding benchmarks. Due to the high variance of the outputs from reasoning models, we report avg@K (pass@1 performance averaged over K outputs) and pass@K for each benchmark. The detailed results are shown in the table below.
 
 <div align="center">
+
+<img src="assets/math_benchmark_table.png" width="100%"/>
+<sub>Evaluation results on mathematical benchmarks.</sub>
+
 <img src="assets/code_benchmark_table.png" width="100%"/>
+<sub>Evaluation results on code benchmarks.</sub>
 </div>
 
-Note:
+<!-- Note:
 1. Evaluation variance for the same model is typically within ±0.5 across multiple runs.
 2. DeepCoder consistently scored around 23 in our tests - lower than its reported performance.
-3. NVIDIA's Nemotron-Research-Reasoning-Qwen-1.5B slightly outperformed its reported score, potentially due to different parameter settings in their original evaluation.
+3. NVIDIA's Nemotron-Research-Reasoning-Qwen-1.5B slightly outperformed its reported score, potentially due to different parameter set -->tings in their original evaluation.
 
 ## Getting Started
 
