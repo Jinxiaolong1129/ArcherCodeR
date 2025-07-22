@@ -47,16 +47,15 @@ We conduct evaluation on both mathematical and coding benchmarks. Due to the hig
 <div align="center">
 
 <img src="assets/math_benchmark_table.png" width="100%"/>
-<sub>Evaluation results on mathematical benchmarks.</sub>
 
 <img src="assets/code_benchmark_table.png" width="100%"/>
-<sub>Evaluation results on code benchmarks.</sub>
+
 </div>
 
 <!-- Note:
 1. Evaluation variance for the same model is typically within ±0.5 across multiple runs.
 2. DeepCoder consistently scored around 23 in our tests - lower than its reported performance.
-3. NVIDIA's Nemotron-Research-Reasoning-Qwen-1.5B slightly outperformed its reported score, potentially due to different parameter set -->tings in their original evaluation.
+3. NVIDIA's Nemotron-Research-Reasoning-Qwen-1.5B slightly outperformed its reported score, potentially due to different parameter settings in their original evaluation. -->
 
 ## Getting Started
 
