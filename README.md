@@ -39,7 +39,7 @@ The Archer series focuses on research into RL algorithms and training for medium
 - Complete training logs
 
 **Current Models**:
-- **[Archer-Code-1.5B](https://huggingface.co/Fate-Zero/Archer-Code-1.5B)** - SOTA among similarly-sized models (training pipeline releasing progressively)
+- **[Archer-Code-1.5B](https://huggingface.co/Fate-Zero/Archer-Code-1.5B)** - SOTA among similarly-sized models.
 
 ## Evaluation
 We conduct evaluation on both mathematical and coding benchmarks. Due to the high variance of the outputs from reasoning models, we report avg@K (pass@1 performance averaged over K outputs) and pass@K for each benchmark. The detailed results are shown in the table below.
