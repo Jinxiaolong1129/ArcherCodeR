@@ -44,13 +44,157 @@ The Archer series focuses on research into RL algorithms and training for medium
 ## Evaluation
 We conduct evaluation on both mathematical and coding benchmarks. Due to the high variance of the outputs from reasoning models, we report avg@K (pass@1 performance averaged over K outputs) and pass@K for each benchmark. The detailed results are shown in the table below.
 
-<div align="center">
 
-<img src="assets/math_benchmark_table.png" width="100%"/>
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Method</th>
+      <th colspan="2">AIME24</th>
+      <th colspan="2">AIME25</th>
+      <th colspan="2">AMC23</th>
+      <th colspan="2">MATH-500</th>
+      <th colspan="2">Minerva</th>
+      <th colspan="2">Olympiad</th>
+      <th rowspan="2">Avg.</th>
+    </tr>
+    <tr>
+      <th>avg@64</th>
+      <th>pass@64</th>
+      <th>avg@64</th>
+      <th>pass@64</th>
+      <th>avg@64</th>
+      <th>pass@64</th>
+      <th>avg@4</th>
+      <th>pass@4</th>
+      <th>avg@8</th>
+      <th>pass@8</th>
+      <th>avg@4</th>
+      <th>pass@4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>DeepSeek-R1-1.5B</td>
+      <td>30.6</td><td>80.0</td>
+      <td>23.5</td><td>63.3</td>
+      <td>70.7</td><td>100.0</td>
+      <td>83.6</td><td>92.4</td>
+      <td>27.6</td><td>48.2</td>
+      <td>44.6</td><td>59.4</td>
+      <td>46.8</td>
+    </tr>
+    <tr>
+      <td>DAPO</td>
+      <td>42.1</td><td>80.0</td>
+      <td>28.6</td><td>56.7</td>
+      <td>80.3</td><td>97.5</td>
+      <td>87.6</td><td>94.6</td>
+      <td>29.2</td><td>46.3</td>
+      <td>53.2</td><td>65.8</td>
+      <td>53.5</td>
+    </tr>
+    <tr>
+      <td>DeepScaleR-1.5B</td>
+      <td>42.0</td><td><strong>83.3</strong></td>
+      <td>29.0</td><td>63.3</td>
+      <td>81.3</td><td>100.0</td>
+      <td>87.7</td><td>93.6</td>
+      <td>30.3</td><td>51.1</td>
+      <td>50.7</td><td>61.0</td>
+      <td>53.5</td>
+    </tr>
+    <tr>
+      <td>FastCuRL-1.5B-V3</td>
+      <td>48.1</td><td>80.0</td>
+      <td>32.7</td><td>60.0</td>
+      <td><strong>86.4</strong></td><td>95.0</td>
+      <td>89.8</td><td>94.0</td>
+      <td>33.6</td><td>50.0</td>
+      <td>55.3</td><td>64.3</td>
+      <td>57.7</td>
+    </tr>
+    <tr>
+      <td>Nemotron-1.5B</td>
+      <td>48.0</td><td>76.7</td>
+      <td>33.1</td><td>60.0</td>
+      <td>86.1</td><td>97.5</td>
+      <td>90.6</td><td>93.6</td>
+      <td>35.3</td><td>47.8</td>
+      <td>59.2</td><td>66.8</td>
+      <td>58.7</td>
+    </tr>
+    <tr>
+      <td><strong>Archer-Math-1.5B</strong></td>
+      <td><strong>48.7</strong></td><td><strong>83.3</strong></td>
+      <td><strong>33.8</strong></td><td><strong>70.0</strong></td>
+      <td>86.0</td><td><strong>97.5</strong></td>
+      <td><strong>90.8</strong></td><td><strong>94.4</strong></td>
+      <td><strong>35.7</strong></td><td><strong>51.1</strong></td>
+      <td><strong>59.3</strong></td><td><strong>67.1</strong></td>
+      <td><strong>59.1</strong></td>
+    </tr>
+  </tbody>
+</table>
 
-<img src="assets/code_benchmark_table.png" width="100%"/>
 
-</div>
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Method</th>
+      <th colspan="2">LCB v5 (2024.08.01–2025.02.01)</th>
+      <th colspan="2">LCB v6 (2025.02.01–2025.05.01)</th>
+      <th rowspan="2">Avg.</th>
+    </tr>
+    <tr>
+      <th>avg@8</th>
+      <th>pass@8</th>
+      <th>avg@16</th>
+      <th>pass@16</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>DeepSeek-R1-1.5B</td>
+      <td>16.7</td>
+      <td>29.0</td>
+      <td>17.2</td>
+      <td>34.4</td>
+      <td>17.0</td>
+    </tr>
+    <tr>
+      <td>DAPO</td>
+      <td>26.0</td>
+      <td>40.5</td>
+      <td>27.6</td>
+      <td>43.5</td>
+      <td>26.8</td>
+    </tr>
+    <tr>
+      <td>DeepCoder-1.5B</td>
+      <td>23.3</td>
+      <td>39.1</td>
+      <td>22.6</td>
+      <td>42.0</td>
+      <td>23.0</td>
+    </tr>
+    <tr>
+      <td>Nemotron-1.5B</td>
+      <td>26.1</td>
+      <td>35.5</td>
+      <td>29.5</td>
+      <td>42.8</td>
+      <td>27.8</td>
+    </tr>
+    <tr>
+      <td><strong>Archer-Code-1.5B</strong></td>
+      <td><strong>29.4</strong></td>
+      <td><strong>43.7</strong></td>
+      <td><strong>30.2</strong></td>
+      <td><strong>45.8</strong></td>
+      <td><strong>29.8</strong></td>
+    </tr>
+  </tbody>
+</table>
 
 <!-- Note:
 1. Evaluation variance for the same model is typically within ±0.5 across multiple runs.
