@@ -97,7 +97,7 @@ Note:
 
 ### Training
 
-We have currently only provided the script and data to reproduce the results of the “ArcherCodeR-1.5B-DAPO”.
+We have currently only provided the script and data to reproduce the results of the “Archer-Code-1.5B”.
 
 ```bash
 bash ./scripts/train/run_archer_qwen2.5_1.5b_code.sh
