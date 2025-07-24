@@ -137,14 +137,11 @@ Note: Please update the path parameters in the scripts above as needed.
 Please cite the following:
 
 ```bibtex
-@misc{wang2025stabilizingknowledgepromotingreasoning,
-      title={Stabilizing Knowledge, Promoting Reasoning: Dual-Token Constraints for RLVR}, 
-      author={Jiakang Wang and Runze Liu and Fuzheng Zhang and Xiu Li and Guorui Zhou},
-      year={2025},
-      eprint={2507.15778},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2507.15778}, 
+@article{wang2025stabilizing,
+  title={Stabilizing Knowledge, Promoting Reasoning: Dual-Token Constraints for RLVR},
+  author={Wang, Jiakang and Liu, Runze and Zhang, Fuzheng and Li, Xiu and Zhou, Guorui},
+  journal={arXiv preprint arXiv:2507.15778},
+  year={2025}
 }
 ```
 
