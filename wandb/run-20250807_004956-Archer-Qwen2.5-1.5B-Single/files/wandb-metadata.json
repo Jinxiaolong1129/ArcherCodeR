@@ -1,0 +1,80 @@
+{
+  "os":  "Linux-6.5.0-35-generic-x86_64-with-glibc2.35",
+  "python":  "CPython 3.10.18",
+  "startedAt":  "2025-08-07T00:49:56.027358Z",
+  "args":  [
+    "--node-ip-address=192.168.208.2",
+    "--node-manager-port=41981",
+    "--object-store-name=/tmp/ray/session_2025-08-07_00-30-59_276983_2204177/sockets/plasma_store",
+    "--raylet-name=/tmp/ray/session_2025-08-07_00-30-59_276983_2204177/sockets/raylet",
+    "--redis-address=None",
+    "--metrics-agent-port=50430",
+    "--runtime-env-agent-port=50773",
+    "--logging-rotate-bytes=536870912",
+    "--logging-rotate-backup-count=5",
+    "--runtime-env-agent-port=50773",
+    "--gcs-address=192.168.208.2:6379",
+    "--session-name=session_2025-08-07_00-30-59_276983_2204177",
+    "--temp-dir=/tmp/ray",
+    "--webui=127.0.0.1:8265",
+    "--cluster-id=f11f7c9ecab5aeb0adfa14662af6c4ab26af778c7d18a2341041ccd8",
+    "--startup-token=116",
+    "--worker-launch-time-ms=1754527690595",
+    "--node-id=c5717f05defce29b3da32ef3b79290b0c7cc50b528327d85ddd5fe7e",
+    "--runtime-env-hash=-1053485826"
+  ],
+  "program":  "/root/miniconda3/envs/archer/lib/python3.10/site-packages/ray/_private/workers/default_worker.py",
+  "git":  {
+    "remote":  "https://github.com/wizard-III/ArcherCodeR.git",
+    "commit":  "8a1785beff0749a5b5b7f3d8751cd19c1d0e570a"
+  },
+  "email":  "jinxiaolong1129@gmail.com",
+  "root":  "/workspace/ArcherCodeR",
+  "host":  "cb3adcad63b3",
+  "executable":  "/root/miniconda3/envs/archer/bin/python3.10",
+  "cpu_count":  128,
+  "cpu_count_logical":  255,
+  "gpu":  "NVIDIA A100-SXM4-80GB",
+  "gpu_count":  4,
+  "disk":  {
+    "/":  {
+      "total":  "322122547200",
+      "used":  "67376009216"
+    }
+  },
+  "memory":  {
+    "total":  "2164287164416"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA A100-SXM4-80GB",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-9f885911-ac00-9ccd-5b74-c219822731d8"
+    },
+    {
+      "name":  "NVIDIA A100-SXM4-80GB",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-82eeee04-344d-12a7-22f1-be3a2ed0c056"
+    },
+    {
+      "name":  "NVIDIA A100-SXM4-80GB",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-8e98b6e2-dd6f-1eee-44b0-10ebac83b7dd"
+    },
+    {
+      "name":  "NVIDIA A100-SXM4-80GB",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-17ed41d3-0256-058a-a16e-b8a851654497"
+    }
+  ],
+  "cudaVersion":  "12.4",
+  "writerId":  "9vugq66jbd5uxwoftm61qa7f0qxohcur"
+}
