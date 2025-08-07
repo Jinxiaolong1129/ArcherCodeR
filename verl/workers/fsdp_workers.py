@@ -628,6 +628,7 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences(self, prompts: DataProto):
+        breakpoint()
         # Support all hardwares
         prompts = prompts.to(get_device_id())
 

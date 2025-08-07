@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
+# if [ -f .env ]; then
+#     source .env
+#     echo "WANDB_API_KEY: $WANDB_API_KEY"
+#     echo "HF_TOKEN: $HF_TOKEN"
+# fi
+
+
 # 单节点配置
 nnodes=1
 
@@ -29,9 +36,10 @@ overlong_penalty_factor=1.0
 v_max_response_length=$((1024 * 32))
 
 # 调整单节点的batch size
-train_prompt_bsz=32
+# train_prompt_bsz=32
+train_prompt_bsz=4
 gen_prompt_bsz=$((train_prompt_bsz * 1))
-train_prompt_mini_bsz=16
+train_prompt_mini_bsz=4
 
 # Paths
 MODEL_PATH=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
@@ -163,5 +171,3 @@ python -m dapo.main_dapo \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
     +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 
 
-
-# bash scripts/train/run_archer_qwen2.5_1.5b_code_single.sh

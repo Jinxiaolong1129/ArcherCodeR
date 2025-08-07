@@ -26,7 +26,12 @@ def run_ppo(config) -> None:
     if not ray.is_initialized():
         # this is for local ray cluster
         ray.init(
-            runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN", "VLLM_LOGGING_LEVEL": "WARN"}},
+            runtime_env={"env_vars": {
+                "TOKENIZERS_PARALLELISM": "true", 
+                "NCCL_DEBUG": "WARN", 
+                "VLLM_LOGGING_LEVEL": "WARN",
+                "RAY_DEBUG_POST_MORTEM": "1"  # Enable Ray post-mortem debugging BUG
+            }},
             num_cpus=config.ray_init.num_cpus,
         )
 
@@ -44,6 +49,8 @@ class TaskRunner:
 
         from verl.utils.fs import copy_to_local
 
+        print("🎯 TaskRunner started - setting breakpoint for Ray debugging...")
+        
         pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
         OmegaConf.resolve(config)
 
@@ -138,7 +145,7 @@ class TaskRunner:
             overlong_buffer_cfg=config.reward_model.overlong_buffer,
         )
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
-
+        print("🎯 Initialize the RayDAPOTrainer trainer...")
         trainer = RayDAPOTrainer(
             config=config,
             tokenizer=tokenizer,
@@ -151,6 +158,7 @@ class TaskRunner:
             device_name=config.trainer.device,
         )
         trainer.init_workers()
+        print("🎯 Starting training fit DAPO...")
         trainer.fit()
 
 

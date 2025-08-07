@@ -562,7 +562,7 @@ def run_sft(config):
     val_dataset = create_sft_dataset(config.data.val_files, config.data, tokenizer)
 
     trainer = FSDPSFTTrainer(config=config, device_mesh=device_mesh, ulysses_device_mesh=ulysses_device_mesh, tokenizer=tokenizer, train_dataset=train_dataset, val_dataset=val_dataset)
-
+    print("🎯 Starting training fit SFT...")
     trainer.fit()
 
     destroy_global_process_group()
