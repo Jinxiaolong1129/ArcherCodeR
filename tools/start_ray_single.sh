@@ -13,7 +13,7 @@ export NCCL_MIN_NCHANNELS=16
 export NCCL_IB_HCA=mlx5
 export NCCL_DEBUG=WARN
 export HYDRA_FULL_ERROR=1
-export WANDB_API_KEY=5c271ef60b4c4753def92be733cf80487f0c7e78
+
 # 停止已存在的Ray集群
 ray stop
 

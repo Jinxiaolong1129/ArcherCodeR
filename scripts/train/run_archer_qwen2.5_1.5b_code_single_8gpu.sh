@@ -12,7 +12,7 @@ set -xeuo pipefail
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Qwen2.5-1.5B-Single'
+exp_name='Archer-Qwen2.5-1.5B-Single-8GPU-UCB'
 
 adv_estimator=grpo
 
@@ -85,6 +85,7 @@ high_entropy_clip_ratio_high=0.5
 use_overlong_filter=False
 
 mkdir -p ${CKPTS_DIR}
+
 
 python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
@@ -159,7 +160,7 @@ python -m dapo.main_dapo \
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes="${nnodes}" \
     trainer.balance_batch=False \
     trainer.val_before_train=False \

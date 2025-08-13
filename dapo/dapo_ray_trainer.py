@@ -81,7 +81,7 @@ class RayDAPOTrainer(RayPPOTrainer):
             
         print("🎯 Starting main training loop setup of RayDAPOTrainer...")
         # add tqdm
-        progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
+        progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress DAPO")
 
         # we start from step 1
         self.global_steps += 1
@@ -178,7 +178,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     
                     with _timer("gen", timing_raw):
                         try:
-                            breakpoint()
+                            # breakpoint()
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
                             timing_raw.update(gen_batch_output.meta_info["timing"])
                             gen_batch_output.meta_info.pop("timing", None)
