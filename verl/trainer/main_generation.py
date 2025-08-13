@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/data/xuandong_zhao/anaconda3/envs/archer/bin/python
 # -*- coding: utf-8 -*-
 '''
 @Time    :   2025/06/21 18:55:18

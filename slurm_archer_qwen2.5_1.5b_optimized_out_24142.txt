@@ -1,0 +1,981 @@
+Starting Archer Qwen2.5 1.5B Single Node training job
+SLURM_JOB_ID: 24142
+SLURM_JOB_NODELIST: compute-891
+SLURM_GPUS: 8
+Date: Thu Aug  7 18:50:58 UTC 2025
+Python version: Python 3.10.18
+Python path: /data/xuandong_zhao/anaconda3/envs/archer/bin/python
+Looking in indexes: https://download.pytorch.org/whl/cu124
+Requirement already satisfied: torch==2.5.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (2.5.1+cu124)
+Requirement already satisfied: filelock in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (3.18.0)
+Requirement already satisfied: typing-extensions>=4.8.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (4.14.1)
+Requirement already satisfied: networkx in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (3.3)
+Requirement already satisfied: jinja2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (3.1.6)
+Requirement already satisfied: fsspec in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (2024.6.1)
+Requirement already satisfied: nvidia-cuda-nvrtc-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (12.4.127)
+Requirement already satisfied: nvidia-cuda-runtime-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (12.4.127)
+Requirement already satisfied: nvidia-cuda-cupti-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (12.4.127)
+Requirement already satisfied: nvidia-cudnn-cu12==9.1.0.70 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (9.1.0.70)
+Requirement already satisfied: nvidia-cublas-cu12==12.4.5.8 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (12.4.5.8)
+Requirement already satisfied: nvidia-cufft-cu12==11.2.1.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (11.2.1.3)
+Requirement already satisfied: nvidia-curand-cu12==10.3.5.147 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (10.3.5.147)
+Requirement already satisfied: nvidia-cusolver-cu12==11.6.1.9 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (11.6.1.9)
+Requirement already satisfied: nvidia-cusparse-cu12==12.3.1.170 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (12.3.1.170)
+Requirement already satisfied: nvidia-nccl-cu12==2.21.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (2.21.5)
+Requirement already satisfied: nvidia-nvtx-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (12.4.127)
+Requirement already satisfied: nvidia-nvjitlink-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (12.4.127)
+Requirement already satisfied: triton==3.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (3.1.0)
+Requirement already satisfied: sympy==1.13.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (1.13.1)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from sympy==1.13.1->torch==2.5.1) (1.3.0)
+Requirement already satisfied: MarkupSafe>=2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from jinja2->torch==2.5.1) (2.1.5)
+Flash-attention wheel file already exists, skipping download.
+Processing ./flash_attn-2.7.3+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+Requirement already satisfied: torch in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (2.5.1+cu124)
+Requirement already satisfied: einops in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (0.8.1)
+Requirement already satisfied: filelock in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (3.18.0)
+Requirement already satisfied: typing-extensions>=4.8.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (4.14.1)
+Requirement already satisfied: networkx in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (3.3)
+Requirement already satisfied: jinja2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (3.1.6)
+Requirement already satisfied: fsspec in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (2024.6.1)
+Requirement already satisfied: nvidia-cuda-nvrtc-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (12.4.127)
+Requirement already satisfied: nvidia-cuda-runtime-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (12.4.127)
+Requirement already satisfied: nvidia-cuda-cupti-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (12.4.127)
+Requirement already satisfied: nvidia-cudnn-cu12==9.1.0.70 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (9.1.0.70)
+Requirement already satisfied: nvidia-cublas-cu12==12.4.5.8 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (12.4.5.8)
+Requirement already satisfied: nvidia-cufft-cu12==11.2.1.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (11.2.1.3)
+Requirement already satisfied: nvidia-curand-cu12==10.3.5.147 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (10.3.5.147)
+Requirement already satisfied: nvidia-cusolver-cu12==11.6.1.9 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (11.6.1.9)
+Requirement already satisfied: nvidia-cusparse-cu12==12.3.1.170 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (12.3.1.170)
+Requirement already satisfied: nvidia-nccl-cu12==2.21.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (2.21.5)
+Requirement already satisfied: nvidia-nvtx-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (12.4.127)
+Requirement already satisfied: nvidia-nvjitlink-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (12.4.127)
+Requirement already satisfied: triton==3.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (3.1.0)
+Requirement already satisfied: sympy==1.13.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (1.13.1)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from sympy==1.13.1->torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (1.3.0)
+Requirement already satisfied: MarkupSafe>=2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from jinja2->torch->flash-attn==2.7.3+cu12torch2.5cxx11abifalse) (2.1.5)
+flash-attn is already installed with the same version as the provided wheel. Use --force-reinstall to force an installation of the wheel.
+Obtaining file:///data/xuandong_zhao/mnt/xiaolong/ArcherCodeR
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Requirement already satisfied: jsonlines in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from verl==0.1) (4.0.0)
+Requirement already satisfied: tenacity in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (9.1.2)
+Requirement already satisfied: wandb in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.21.0)
+Requirement already satisfied: mpi4py in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (4.1.0)
+Requirement already satisfied: accelerate in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.9.0)
+Requirement already satisfied: codetiming in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from verl==0.1) (1.4.0)
+Requirement already satisfied: datasets in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (4.0.0)
+Requirement already satisfied: dill in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.3.8)
+Requirement already satisfied: hydra-core in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from verl==0.1) (1.3.2)
+Requirement already satisfied: liger-kernel in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.6.1)
+Requirement already satisfied: numpy in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.26.4)
+Requirement already satisfied: pandas in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (2.3.1)
+Requirement already satisfied: peft in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.17.0)
+Requirement already satisfied: pyarrow>=15.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (21.0.0)
+Requirement already satisfied: pybind11 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (3.0.0)
+Requirement already satisfied: ray[default] in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (2.40.0)
+Requirement already satisfied: torchdata in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.11.0)
+Requirement already satisfied: tensordict==0.5.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.5.0)
+Requirement already satisfied: transformers==4.51.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (4.51.3)
+Requirement already satisfied: google-cloud-aiplatform in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.107.0)
+Requirement already satisfied: latex2sympy2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.5.4)
+Requirement already satisfied: pylatexenc in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (2.10)
+Requirement already satisfied: sentence_transformers in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (5.1.0)
+Requirement already satisfied: tabulate in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.9.0)
+Requirement already satisfied: flash_attn==2.7.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (2.7.3)
+Requirement already satisfied: vllm==0.7.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.7.3)
+Requirement already satisfied: dm-tree in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.1.9)
+Requirement already satisfied: gdown in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (5.2.0)
+Requirement already satisfied: pytest in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (8.4.1)
+Requirement already satisfied: sortedcontainers in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (2.4.0)
+Requirement already satisfied: torchmetrics in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.8.0)
+Requirement already satisfied: gym in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.26.2)
+Requirement already satisfied: selenium in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (4.34.2)
+Requirement already satisfied: PyMuPDF in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.26.3)
+Requirement already satisfied: browsergym in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.14.2)
+Requirement already satisfied: gradio in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (5.41.1)
+Requirement already satisfied: fire in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.7.0)
+Requirement already satisfied: vertexai in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.43.0)
+Requirement already satisfied: e2b_code_interpreter in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.5.2)
+Requirement already satisfied: firecrawl in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (2.16.5)
+Requirement already satisfied: antlr4-python3-runtime==4.9.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (4.9.3)
+Requirement already satisfied: math-verify[antlr4_9_3] in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (0.8.0)
+Requirement already satisfied: polars in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.32.1)
+Requirement already satisfied: modelscope in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from verl==0.1) (1.28.2)
+Requirement already satisfied: torch in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from flash_attn==2.7.3->verl==0.1) (2.5.1+cu124)
+Requirement already satisfied: einops in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from flash_attn==2.7.3->verl==0.1) (0.8.1)
+Requirement already satisfied: cloudpickle in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from tensordict==0.5.0->verl==0.1) (3.1.1)
+Requirement already satisfied: orjson in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from tensordict==0.5.0->verl==0.1) (3.11.1)
+Requirement already satisfied: filelock in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (3.18.0)
+Requirement already satisfied: huggingface-hub<1.0,>=0.30.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (0.34.3)
+Requirement already satisfied: packaging>=20.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (25.0)
+Requirement already satisfied: pyyaml>=5.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (6.0.2)
+Requirement already satisfied: regex!=2019.12.17 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (2025.7.34)
+Requirement already satisfied: requests in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (2.32.4)
+Requirement already satisfied: tokenizers<0.22,>=0.21 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (0.21.4)
+Requirement already satisfied: safetensors>=0.4.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (0.6.1)
+Requirement already satisfied: tqdm>=4.27 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from transformers==4.51.3->verl==0.1) (4.67.1)
+Requirement already satisfied: psutil in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (7.0.0)
+Requirement already satisfied: sentencepiece in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.2.0)
+Requirement already satisfied: numba==0.60.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.60.0)
+Requirement already satisfied: blake3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (1.0.5)
+Requirement already satisfied: py-cpuinfo in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (9.0.0)
+Requirement already satisfied: protobuf in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (6.31.1)
+Requirement already satisfied: fastapi!=0.113.*,!=0.114.0,>=0.107.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.116.1)
+Requirement already satisfied: aiohttp in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (3.12.15)
+Requirement already satisfied: openai>=1.52.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (1.99.1)
+Requirement already satisfied: pydantic>=2.9 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (2.11.7)
+Requirement already satisfied: prometheus_client>=0.18.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.22.1)
+Requirement already satisfied: pillow in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (11.3.0)
+Requirement already satisfied: prometheus-fastapi-instrumentator>=7.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (7.1.0)
+Requirement already satisfied: tiktoken>=0.6.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.10.0)
+Requirement already satisfied: lm-format-enforcer<0.11,>=0.10.9 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.10.12)
+Requirement already satisfied: outlines==0.1.11 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.1.11)
+Requirement already satisfied: lark==1.2.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (1.2.2)
+Requirement already satisfied: xgrammar==0.1.11 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.1.11)
+Requirement already satisfied: typing_extensions>=4.10 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (4.14.1)
+Requirement already satisfied: partial-json-parser in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.2.1.1.post6)
+Requirement already satisfied: pyzmq in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (27.0.1)
+Requirement already satisfied: msgspec in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.19.0)
+Requirement already satisfied: gguf==0.10.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.10.0)
+Requirement already satisfied: importlib_metadata in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (8.7.0)
+Requirement already satisfied: mistral_common>=1.5.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from mistral_common[opencv]>=1.5.0->vllm==0.7.3->verl==0.1) (1.8.3)
+Requirement already satisfied: compressed-tensors==0.9.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.9.1)
+Requirement already satisfied: depyf==0.18.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.18.0)
+Requirement already satisfied: torchaudio==2.5.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (2.5.1)
+Requirement already satisfied: torchvision==0.20.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.20.1)
+Requirement already satisfied: xformers==0.0.28.post3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from vllm==0.7.3->verl==0.1) (0.0.28.post3)
+Requirement already satisfied: astor in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from depyf==0.18.0->vllm==0.7.3->verl==0.1) (0.8.1)
+Requirement already satisfied: llvmlite<0.44,>=0.43.0dev0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from numba==0.60.0->vllm==0.7.3->verl==0.1) (0.43.0)
+Requirement already satisfied: interegular in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (0.3.3)
+Requirement already satisfied: jinja2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (3.1.6)
+Requirement already satisfied: nest_asyncio in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (1.6.0)
+Requirement already satisfied: diskcache in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (5.6.3)
+Requirement already satisfied: referencing in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (0.36.2)
+Requirement already satisfied: jsonschema in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (4.25.0)
+Requirement already satisfied: pycountry in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (24.6.1)
+Requirement already satisfied: airportsdata in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (20250706)
+Requirement already satisfied: outlines_core==0.1.26 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from outlines==0.1.11->vllm==0.7.3->verl==0.1) (0.1.26)
+Requirement already satisfied: click>=7.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (8.2.1)
+Requirement already satisfied: msgpack<2.0.0,>=1.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (1.1.1)
+Requirement already satisfied: aiosignal in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (1.4.0)
+Requirement already satisfied: frozenlist in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (1.7.0)
+Requirement already satisfied: cupy-cuda12x in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[adag]==2.40.0->vllm==0.7.3->verl==0.1) (13.5.1)
+Requirement already satisfied: networkx in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (3.3)
+Requirement already satisfied: fsspec in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (2024.6.1)
+Requirement already satisfied: nvidia-cuda-nvrtc-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (12.4.127)
+Requirement already satisfied: nvidia-cuda-runtime-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (12.4.127)
+Requirement already satisfied: nvidia-cuda-cupti-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (12.4.127)
+Requirement already satisfied: nvidia-cudnn-cu12==9.1.0.70 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (9.1.0.70)
+Requirement already satisfied: nvidia-cublas-cu12==12.4.5.8 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (12.4.5.8)
+Requirement already satisfied: nvidia-cufft-cu12==11.2.1.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (11.2.1.3)
+Requirement already satisfied: nvidia-curand-cu12==10.3.5.147 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (10.3.5.147)
+Requirement already satisfied: nvidia-cusolver-cu12==11.6.1.9 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (11.6.1.9)
+Requirement already satisfied: nvidia-cusparse-cu12==12.3.1.170 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (12.3.1.170)
+Requirement already satisfied: nvidia-nccl-cu12==2.21.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (2.21.5)
+Requirement already satisfied: nvidia-nvtx-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (12.4.127)
+Requirement already satisfied: nvidia-nvjitlink-cu12==12.4.127 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (12.4.127)
+Requirement already satisfied: triton==3.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (3.1.0)
+Requirement already satisfied: sympy==1.13.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch->flash_attn==2.7.3->verl==0.1) (1.13.1)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from sympy==1.13.1->torch->flash_attn==2.7.3->verl==0.1) (1.3.0)
+Requirement already satisfied: hf-xet<2.0.0,>=1.1.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from huggingface-hub<1.0,>=0.30.0->transformers==4.51.3->verl==0.1) (1.1.7)
+Requirement already satisfied: starlette<0.48.0,>=0.40.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi!=0.113.*,!=0.114.0,>=0.107.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.47.2)
+Requirement already satisfied: annotated-types>=0.6.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pydantic>=2.9->vllm==0.7.3->verl==0.1) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pydantic>=2.9->vllm==0.7.3->verl==0.1) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pydantic>=2.9->vllm==0.7.3->verl==0.1) (0.4.1)
+Requirement already satisfied: anyio<5,>=3.6.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from starlette<0.48.0,>=0.40.0->fastapi!=0.113.*,!=0.114.0,>=0.107.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (4.10.0)
+Requirement already satisfied: exceptiongroup>=1.0.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from anyio<5,>=3.6.2->starlette<0.48.0,>=0.40.0->fastapi!=0.113.*,!=0.114.0,>=0.107.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (1.3.0)
+Requirement already satisfied: idna>=2.8 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from anyio<5,>=3.6.2->starlette<0.48.0,>=0.40.0->fastapi!=0.113.*,!=0.114.0,>=0.107.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (3.10)
+Requirement already satisfied: sniffio>=1.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from anyio<5,>=3.6.2->starlette<0.48.0,>=0.40.0->fastapi!=0.113.*,!=0.114.0,>=0.107.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (1.3.1)
+Requirement already satisfied: fastapi-cli>=0.0.8 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.0.8)
+Requirement already satisfied: httpx>=0.23.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.28.1)
+Requirement already satisfied: python-multipart>=0.0.18 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.0.20)
+Requirement already satisfied: email-validator>=2.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (2.2.0)
+Requirement already satisfied: uvicorn>=0.12.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from uvicorn[standard]>=0.12.0; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.35.0)
+Requirement already satisfied: dnspython>=2.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from email-validator>=2.0.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (2.7.0)
+Requirement already satisfied: typer>=0.15.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi-cli>=0.0.8->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.16.0)
+Requirement already satisfied: rich-toolkit>=0.14.8 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi-cli>=0.0.8->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.14.9)
+Requirement already satisfied: fastapi-cloud-cli>=0.1.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.1.5)
+Requirement already satisfied: rignore>=0.5.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi-cloud-cli>=0.1.1->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.6.4)
+Requirement already satisfied: sentry-sdk>=2.20.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fastapi-cloud-cli>=0.1.1->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (2.34.1)
+Requirement already satisfied: certifi in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from httpx>=0.23.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (2025.8.3)
+Requirement already satisfied: httpcore==1.* in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from httpx>=0.23.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (1.0.9)
+Requirement already satisfied: h11>=0.16 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from httpcore==1.*->httpx>=0.23.0->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.16.0)
+Requirement already satisfied: MarkupSafe>=2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from jinja2->outlines==0.1.11->vllm==0.7.3->verl==0.1) (2.1.5)
+Requirement already satisfied: pydantic-extra-types>=2.10.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pydantic-extra-types[pycountry]>=2.10.5->mistral_common>=1.5.0->mistral_common[opencv]>=1.5.0->vllm==0.7.3->verl==0.1) (2.10.5)
+Requirement already satisfied: attrs>=22.2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from jsonschema->outlines==0.1.11->vllm==0.7.3->verl==0.1) (25.3.0)
+Requirement already satisfied: jsonschema-specifications>=2023.03.6 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from jsonschema->outlines==0.1.11->vllm==0.7.3->verl==0.1) (2025.4.1)
+Requirement already satisfied: rpds-py>=0.7.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from jsonschema->outlines==0.1.11->vllm==0.7.3->verl==0.1) (0.26.0)
+Requirement already satisfied: opencv-python-headless>=4.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from mistral_common[opencv]>=1.5.0->vllm==0.7.3->verl==0.1) (4.11.0.86)
+Requirement already satisfied: distro<2,>=1.7.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from openai>=1.52.0->vllm==0.7.3->verl==0.1) (1.9.0)
+Requirement already satisfied: jiter<1,>=0.4.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from openai>=1.52.0->vllm==0.7.3->verl==0.1) (0.10.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from requests->transformers==4.51.3->verl==0.1) (3.4.2)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from requests->transformers==4.51.3->verl==0.1) (2.5.0)
+Requirement already satisfied: rich>=13.7.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from rich-toolkit>=0.14.8->fastapi-cli>=0.0.8->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (14.1.0)
+Requirement already satisfied: markdown-it-py>=2.2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.8->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (3.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.8->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (2.19.2)
+Requirement already satisfied: mdurl~=0.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from markdown-it-py>=2.2.0->rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.8->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.1.2)
+Requirement already satisfied: shellingham>=1.3.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from typer>=0.15.1->fastapi-cli>=0.0.8->fastapi-cli[standard]>=0.0.8; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (1.5.4)
+Requirement already satisfied: httptools>=0.6.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from uvicorn[standard]>=0.12.0; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.6.4)
+Requirement already satisfied: python-dotenv>=0.13 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from uvicorn[standard]>=0.12.0; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (1.1.1)
+Requirement already satisfied: uvloop>=0.15.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from uvicorn[standard]>=0.12.0; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (0.21.0)
+Requirement already satisfied: watchfiles>=0.13 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from uvicorn[standard]>=0.12.0; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (1.1.0)
+Requirement already satisfied: websockets>=10.4 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from uvicorn[standard]>=0.12.0; extra == "standard"->fastapi[standard]!=0.113.*,!=0.114.0,>=0.107.0; python_version >= "3.9"->vllm==0.7.3->verl==0.1) (15.0.1)
+Requirement already satisfied: aiohappyeyeballs>=2.5.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from aiohttp->vllm==0.7.3->verl==0.1) (2.6.1)
+Requirement already satisfied: async-timeout<6.0,>=4.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from aiohttp->vllm==0.7.3->verl==0.1) (5.0.1)
+Requirement already satisfied: multidict<7.0,>=4.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from aiohttp->vllm==0.7.3->verl==0.1) (6.6.3)
+Requirement already satisfied: propcache>=0.2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from aiohttp->vllm==0.7.3->verl==0.1) (0.3.2)
+Requirement already satisfied: yarl<2.0,>=1.17.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from aiohttp->vllm==0.7.3->verl==0.1) (1.20.1)
+Requirement already satisfied: browsergym-core==0.14.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.14.2)
+Requirement already satisfied: browsergym-miniwob==0.14.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.14.2)
+Requirement already satisfied: browsergym-webarena==0.14.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.14.2)
+Requirement already satisfied: browsergym-visualwebarena==0.14.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.14.2)
+Requirement already satisfied: browsergym-assistantbench==0.14.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.14.2)
+Requirement already satisfied: browsergym-experiments==0.14.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.14.2)
+Requirement already satisfied: browsergym-workarena>=0.4.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.4.3)
+Requirement already satisfied: weblinx-browsergym>=0.0.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym->verl==0.1) (0.0.3)
+Requirement already satisfied: scipy in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-assistantbench==0.14.2->browsergym->verl==0.1) (1.15.3)
+Requirement already satisfied: beautifulsoup4>=4.12 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-core==0.14.2->browsergym->verl==0.1) (4.13.4)
+Requirement already satisfied: gymnasium>=0.27 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-core==0.14.2->browsergym->verl==0.1) (1.2.0)
+Requirement already satisfied: lxml<6.0.0,>=4.9 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-core==0.14.2->browsergym->verl==0.1) (5.4.0)
+Requirement already satisfied: mcp>=1.6.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from mcp[cli]>=1.6.0->browsergym-core==0.14.2->browsergym->verl==0.1) (1.12.3)
+Requirement already satisfied: playwright==1.44 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-core==0.14.2->browsergym->verl==0.1) (1.44.0)
+Requirement already satisfied: pyparsing>=3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-core==0.14.2->browsergym->verl==0.1) (3.2.3)
+Requirement already satisfied: dataclasses-json in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-experiments==0.14.2->browsergym->verl==0.1) (0.6.7)
+Requirement already satisfied: libvisualwebarena==0.0.15 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (0.0.15)
+Requirement already satisfied: libwebarena==0.0.4 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-webarena==0.14.2->browsergym->verl==0.1) (0.0.4)
+Requirement already satisfied: evaluate in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (0.4.5)
+Requirement already satisfied: types-tqdm in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (4.67.0.20250516)
+Requirement already satisfied: aiolimiter in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (1.2.1)
+Requirement already satisfied: beartype==0.12.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (0.12.0)
+Requirement already satisfied: flask in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (3.1.1)
+Requirement already satisfied: nltk in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (3.9.1)
+Requirement already satisfied: text-generation in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (0.7.0)
+Requirement already satisfied: scikit-image>=0.16 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (0.25.2)
+Requirement already satisfied: greenlet==3.0.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from playwright==1.44->browsergym-core==0.14.2->browsergym->verl==0.1) (3.0.3)
+Requirement already satisfied: pyee==11.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from playwright==1.44->browsergym-core==0.14.2->browsergym->verl==0.1) (11.1.0)
+Requirement already satisfied: soupsieve>1.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from beautifulsoup4>=4.12->browsergym-core==0.14.2->browsergym->verl==0.1) (2.7)
+Requirement already satisfied: english-words>=2.0.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-workarena>=0.4.1->browsergym->verl==0.1) (2.0.1)
+Requirement already satisfied: faker>=24.8.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from browsergym-workarena>=0.4.1->browsergym->verl==0.1) (37.5.3)
+Requirement already satisfied: tzdata in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from faker>=24.8.0->browsergym-workarena>=0.4.1->browsergym->verl==0.1) (2025.2)
+Requirement already satisfied: farama-notifications>=0.0.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gymnasium>=0.27->browsergym-core==0.14.2->browsergym->verl==0.1) (0.0.4)
+Requirement already satisfied: httpx-sse>=0.4 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from mcp>=1.6.0->mcp[cli]>=1.6.0->browsergym-core==0.14.2->browsergym->verl==0.1) (0.4.1)
+Requirement already satisfied: pydantic-settings>=2.5.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from mcp>=1.6.0->mcp[cli]>=1.6.0->browsergym-core==0.14.2->browsergym->verl==0.1) (2.10.1)
+Requirement already satisfied: sse-starlette>=1.6.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from mcp>=1.6.0->mcp[cli]>=1.6.0->browsergym-core==0.14.2->browsergym->verl==0.1) (3.0.2)
+Requirement already satisfied: imageio!=2.35.0,>=2.33 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from scikit-image>=0.16->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (2.37.0)
+Requirement already satisfied: tifffile>=2022.8.12 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from scikit-image>=0.16->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (2025.5.10)
+Requirement already satisfied: lazy-loader>=0.4 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from scikit-image>=0.16->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (0.4)
+Requirement already satisfied: weblinx<0.4.0,>=0.3.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from weblinx[eval]<0.4.0,>=0.3.2->weblinx-browsergym>=0.0.2->browsergym->verl==0.1) (0.3.2)
+Requirement already satisfied: sacrebleu in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from weblinx[eval]<0.4.0,>=0.3.2->weblinx-browsergym>=0.0.2->browsergym->verl==0.1) (2.5.1)
+Requirement already satisfied: fastrlock>=0.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from cupy-cuda12x->ray[adag]==2.40.0->vllm==0.7.3->verl==0.1) (0.8.3)
+Requirement already satisfied: marshmallow<4.0.0,>=3.18.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from dataclasses-json->browsergym-experiments==0.14.2->browsergym->verl==0.1) (3.26.1)
+Requirement already satisfied: typing-inspect<1,>=0.4.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from dataclasses-json->browsergym-experiments==0.14.2->browsergym->verl==0.1) (0.9.0)
+Requirement already satisfied: mypy-extensions>=0.3.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from typing-inspect<1,>=0.4.0->dataclasses-json->browsergym-experiments==0.14.2->browsergym->verl==0.1) (1.1.0)
+Requirement already satisfied: xxhash in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from datasets->verl==0.1) (3.5.0)
+Requirement already satisfied: multiprocess<0.70.17 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from datasets->verl==0.1) (0.70.16)
+Requirement already satisfied: absl-py>=0.6.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from dm-tree->verl==0.1) (2.3.1)
+Requirement already satisfied: wrapt>=1.11.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from dm-tree->verl==0.1) (1.17.2)
+Requirement already satisfied: e2b<2.0.0,>=1.5.4 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from e2b_code_interpreter->verl==0.1) (1.11.1)
+Requirement already satisfied: python-dateutil>=2.8.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from e2b<2.0.0,>=1.5.4->e2b_code_interpreter->verl==0.1) (2.9.0.post0)
+Requirement already satisfied: six>=1.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from python-dateutil>=2.8.2->e2b<2.0.0,>=1.5.4->e2b_code_interpreter->verl==0.1) (1.17.0)
+Requirement already satisfied: termcolor in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from fire->verl==0.1) (3.1.0)
+Requirement already satisfied: blinker>=1.9.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from flask->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (1.9.0)
+Requirement already satisfied: itsdangerous>=2.2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from flask->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (2.2.0)
+Requirement already satisfied: werkzeug>=3.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from flask->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (3.1.3)
+Requirement already satisfied: google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1->google-cloud-aiplatform->verl==0.1) (2.25.1)
+Requirement already satisfied: google-auth<3.0.0,>=2.14.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (2.40.3)
+Requirement already satisfied: proto-plus<2.0.0,>=1.22.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (1.26.1)
+Requirement already satisfied: google-cloud-storage<3.0.0,>=1.32.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (2.19.0)
+Requirement already satisfied: google-cloud-bigquery!=3.20.0,<4.0.0,>=1.15.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (3.35.1)
+Requirement already satisfied: google-cloud-resource-manager<3.0.0,>=1.3.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (1.14.2)
+Requirement already satisfied: shapely<3.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (2.1.1)
+Requirement already satisfied: google-genai<2.0.0,>=1.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (1.29.0)
+Requirement already satisfied: docstring_parser<1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-aiplatform->verl==0.1) (0.17.0)
+Requirement already satisfied: googleapis-common-protos<2.0.0,>=1.56.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1->google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1->google-cloud-aiplatform->verl==0.1) (1.70.0)
+Requirement already satisfied: grpcio<2.0.0,>=1.33.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1->google-cloud-aiplatform->verl==0.1) (1.74.0)
+Requirement already satisfied: grpcio-status<2.0.0,>=1.33.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,<3.0.0,>=1.34.1->google-cloud-aiplatform->verl==0.1) (1.74.0)
+Requirement already satisfied: cachetools<6.0,>=2.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-auth<3.0.0,>=2.14.1->google-cloud-aiplatform->verl==0.1) (5.5.2)
+Requirement already satisfied: pyasn1-modules>=0.2.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-auth<3.0.0,>=2.14.1->google-cloud-aiplatform->verl==0.1) (0.4.2)
+Requirement already satisfied: rsa<5,>=3.1.4 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-auth<3.0.0,>=2.14.1->google-cloud-aiplatform->verl==0.1) (4.9.1)
+Requirement already satisfied: google-cloud-core<3.0.0,>=2.4.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-bigquery!=3.20.0,<4.0.0,>=1.15.0->google-cloud-aiplatform->verl==0.1) (2.4.3)
+Requirement already satisfied: google-resumable-media<3.0.0,>=2.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-bigquery!=3.20.0,<4.0.0,>=1.15.0->google-cloud-aiplatform->verl==0.1) (2.7.2)
+Requirement already satisfied: grpc-google-iam-v1<1.0.0,>=0.14.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-resource-manager<3.0.0,>=1.3.3->google-cloud-aiplatform->verl==0.1) (0.14.2)
+Requirement already satisfied: google-crc32c<2.0dev,>=1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from google-cloud-storage<3.0.0,>=1.32.0->google-cloud-aiplatform->verl==0.1) (1.7.1)
+Requirement already satisfied: pyasn1>=0.1.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from rsa<5,>=3.1.4->google-auth<3.0.0,>=2.14.1->google-cloud-aiplatform->verl==0.1) (0.6.1)
+Requirement already satisfied: aiofiles<25.0,>=22.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (24.1.0)
+Requirement already satisfied: brotli>=1.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (1.1.0)
+Requirement already satisfied: ffmpy in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (0.6.1)
+Requirement already satisfied: gradio-client==1.11.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (1.11.0)
+Requirement already satisfied: groovy~=0.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (0.1.2)
+Requirement already satisfied: pydub in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (0.25.1)
+Requirement already satisfied: ruff>=0.9.3 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (0.12.7)
+Requirement already satisfied: safehttpx<0.2.0,>=0.1.6 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (0.1.6)
+Requirement already satisfied: semantic-version~=2.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (2.10.0)
+Requirement already satisfied: tomlkit<0.14.0,>=0.12.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gradio->verl==0.1) (0.13.3)
+Requirement already satisfied: pytz>=2020.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pandas->verl==0.1) (2025.2)
+Requirement already satisfied: gym_notices>=0.0.4 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gym->verl==0.1) (0.1.0)
+Requirement already satisfied: omegaconf<2.4,>=2.2 in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from hydra-core->verl==0.1) (2.3.0)
+Requirement already satisfied: zipp>=3.20 in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from importlib_metadata->vllm==0.7.3->verl==0.1) (3.20.2)
+Requirement already satisfied: latex2sympy2_extended==1.10.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from math-verify[antlr4_9_3]->verl==0.1) (1.10.2)
+Requirement already satisfied: setuptools in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from modelscope->verl==0.1) (78.1.1)
+Requirement already satisfied: joblib in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from nltk->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (1.5.1)
+Requirement already satisfied: iniconfig>=1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pytest->verl==0.1) (2.1.0)
+Requirement already satisfied: pluggy<2,>=1.5 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pytest->verl==0.1) (1.6.0)
+Requirement already satisfied: tomli>=1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from pytest->verl==0.1) (2.2.1)
+Requirement already satisfied: aiohttp-cors in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (0.8.1)
+Requirement already satisfied: colorful in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from ray[default]->verl==0.1) (0.5.6)
+Requirement already satisfied: py-spy>=0.2.0 in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from ray[default]->verl==0.1) (0.4.0)
+Requirement already satisfied: opencensus in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (0.11.4)
+Requirement already satisfied: smart-open in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from ray[default]->verl==0.1) (7.1.0)
+Requirement already satisfied: virtualenv!=20.21.1,>=20.0.24 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (20.33.1)
+Requirement already satisfied: memray in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from ray[default]->verl==0.1) (1.17.2)
+Requirement already satisfied: distlib<1,>=0.3.7 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from virtualenv!=20.21.1,>=20.0.24->ray[default]->verl==0.1) (0.4.0)
+Requirement already satisfied: platformdirs<5,>=3.9.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from virtualenv!=20.21.1,>=20.0.24->ray[default]->verl==0.1) (4.3.8)
+Requirement already satisfied: textual>=0.41.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from memray->ray[default]->verl==0.1) (5.2.0)
+Requirement already satisfied: linkify-it-py<3,>=1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from markdown-it-py[linkify,plugins]>=2.1.0->textual>=0.41.0->memray->ray[default]->verl==0.1) (2.0.3)
+Requirement already satisfied: mdit-py-plugins in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from markdown-it-py[linkify,plugins]>=2.1.0->textual>=0.41.0->memray->ray[default]->verl==0.1) (0.4.2)
+Requirement already satisfied: uc-micro-py in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from linkify-it-py<3,>=1->markdown-it-py[linkify,plugins]>=2.1.0->textual>=0.41.0->memray->ray[default]->verl==0.1) (1.0.3)
+Requirement already satisfied: opencensus-context>=0.1.3 in /data/xuandong_zhao/.local/lib/python3.10/site-packages (from opencensus->ray[default]->verl==0.1) (0.1.3)
+Requirement already satisfied: PySocks!=1.5.7,>=1.5.6 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from requests[socks]->gdown->verl==0.1) (1.7.1)
+Requirement already satisfied: portalocker in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from sacrebleu->weblinx[eval]<0.4.0,>=0.3.2->weblinx-browsergym>=0.0.2->browsergym->verl==0.1) (3.2.0)
+Requirement already satisfied: colorama in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from sacrebleu->weblinx[eval]<0.4.0,>=0.3.2->weblinx-browsergym>=0.0.2->browsergym->verl==0.1) (0.4.6)
+Requirement already satisfied: trio~=0.30.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from selenium->verl==0.1) (0.30.0)
+Requirement already satisfied: trio-websocket~=0.12.2 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from selenium->verl==0.1) (0.12.2)
+Requirement already satisfied: websocket-client~=1.8.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from selenium->verl==0.1) (1.8.0)
+Requirement already satisfied: outcome in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from trio~=0.30.0->selenium->verl==0.1) (1.3.0.post0)
+Requirement already satisfied: wsproto>=0.14 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from trio-websocket~=0.12.2->selenium->verl==0.1) (1.2.0)
+Requirement already satisfied: scikit-learn in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from sentence_transformers->verl==0.1) (1.7.1)
+Requirement already satisfied: threadpoolctl>=3.1.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from scikit-learn->sentence_transformers->verl==0.1) (3.6.0)
+Requirement already satisfied: lightning-utilities>=0.8.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torchmetrics->verl==0.1) (0.15.2)
+Requirement already satisfied: types-requests in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from types-tqdm->libvisualwebarena==0.0.15->browsergym-visualwebarena==0.14.2->browsergym->verl==0.1) (2.32.4.20250611)
+Requirement already satisfied: gitpython!=3.1.29,>=1.0.0 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from wandb->verl==0.1) (3.1.45)
+Requirement already satisfied: gitdb<5,>=4.0.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gitpython!=3.1.29,>=1.0.0->wandb->verl==0.1) (4.0.12)
+Requirement already satisfied: smmap<6,>=3.0.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from gitdb<5,>=4.0.1->gitpython!=3.1.29,>=1.0.0->wandb->verl==0.1) (5.0.2)
+Installing collected packages: verl
+  Attempting uninstall: verl
+    Found existing installation: verl 0.1
+    Uninstalling verl-0.1:
+      Successfully uninstalled verl-0.1
+  Running setup.py develop for verl
+Successfully installed verl
+Warning: Could not set ulimit for open files (insufficient permissions)
+Warning: .env file not found. Continuing without loading .env
+Step 1: Downloading datasets...
+File saved to: ./data/train/archercoder-1.5b-train.json
+File saved to: ./data/test/livecodebench_v5.json
+Step 2: Starting Ray cluster...
+启动单节点Ray集群...
+2025-08-07 18:51:18,461	INFO scripts.py:1242 -- Did not find any active Ray processes.
+2025-08-07 18:51:20,101	INFO usage_lib.py:467 -- Usage stats collection is enabled by default without user confirmation because this terminal is detected to be non-interactive. To disable this, add `--disable-usage-stats` to the command that starts the cluster, or run the following command: `ray disable-usage-stats` before starting the cluster. See https://docs.ray.io/en/master/cluster/usage-stats.html for more details.
+2025-08-07 18:51:20,101	INFO scripts.py:823 -- [37mLocal node IP[39m: [1m172.16.7.122[22m
+2025-08-07 18:51:21,617	SUCC scripts.py:860 -- [32m--------------------[39m
+2025-08-07 18:51:21,617	SUCC scripts.py:861 -- [32mRay runtime started.[39m
+2025-08-07 18:51:21,617	SUCC scripts.py:862 -- [32m--------------------[39m
+2025-08-07 18:51:21,617	INFO scripts.py:864 -- [36mNext steps[39m
+2025-08-07 18:51:21,617	INFO scripts.py:867 -- To add another node to this Ray cluster, run
+2025-08-07 18:51:21,617	INFO scripts.py:870 -- [1m  ray start --address='172.16.7.122:6379'[22m
+2025-08-07 18:51:21,617	INFO scripts.py:879 -- To connect to this Ray cluster:
+2025-08-07 18:51:21,617	INFO scripts.py:881 -- [35mimport[39m[26m ray
+2025-08-07 18:51:21,617	INFO scripts.py:882 -- ray[35m.[39m[26minit()
+2025-08-07 18:51:21,617	INFO scripts.py:894 -- To submit a Ray job using the Ray Jobs CLI:
+2025-08-07 18:51:21,618	INFO scripts.py:895 -- [1m  RAY_ADDRESS='http://127.0.0.1:8265' ray job submit --working-dir . -- python my_script.py[22m
+2025-08-07 18:51:21,618	INFO scripts.py:904 -- See https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html 
+2025-08-07 18:51:21,618	INFO scripts.py:908 -- for more information on submitting Ray jobs to the Ray cluster.
+2025-08-07 18:51:21,618	INFO scripts.py:913 -- To terminate the Ray runtime, run
+2025-08-07 18:51:21,618	INFO scripts.py:914 -- [1m  ray stop[22m
+2025-08-07 18:51:21,618	INFO scripts.py:917 -- To view the status of the cluster, use
+2025-08-07 18:51:21,618	INFO scripts.py:918 --   [1mray status[22m[26m
+2025-08-07 18:51:21,618	INFO scripts.py:922 -- To monitor and debug Ray, view the dashboard at 
+2025-08-07 18:51:21,618	INFO scripts.py:923 --   [1m127.0.0.1:8265[22m[26m
+2025-08-07 18:51:21,618	INFO scripts.py:930 -- [4mIf connection to the dashboard fails, check your firewall settings and network configuration.[24m
+单节点Ray集群启动完成！
+Dashboard 地址: http://localhost:8265
+Ray集群信息:
+No cluster status. It may take a few seconds for the Ray internal services to start up.
+Step 3: Starting training...
+🚀 OPTIMIZED CONFIGURATION:
+📏 Max prompt length: 1024
+📏 Max response length: 8192
+📦 Batch size: 16
+🔢 Responses per prompt: 4
+⚡ Tensor parallel: 1
+🎯 Total tokens per batch: 524288
+2025-08-07 18:51:29,099	INFO worker.py:1636 -- Connecting to existing Ray cluster at address: 172.16.7.122:6379...
+2025-08-07 18:51:29,108	INFO worker.py:1812 -- Connected to Ray cluster. View the dashboard at [1m[32m127.0.0.1:8265 [39m[22m
+[36m(TaskRunner pid=2887958)[0m {'actor_rollout_ref': {'actor': {'checkpoint': {'load_contents': ['model',
+[36m(TaskRunner pid=2887958)[0m                                                                   'optimizer',
+[36m(TaskRunner pid=2887958)[0m                                                                   'extra'],
+[36m(TaskRunner pid=2887958)[0m                                                 'save_contents': ['model',
+[36m(TaskRunner pid=2887958)[0m                                                                   'optimizer',
+[36m(TaskRunner pid=2887958)[0m                                                                   'extra']},
+[36m(TaskRunner pid=2887958)[0m                                  'clip_ratio': 0.2,
+[36m(TaskRunner pid=2887958)[0m                                  'clip_ratio_c': 10.0,
+[36m(TaskRunner pid=2887958)[0m                                  'clip_ratio_high': 0.2,
+[36m(TaskRunner pid=2887958)[0m                                  'clip_ratio_low': 0.2,
+[36m(TaskRunner pid=2887958)[0m                                  'entropy_checkpointing': False,
+[36m(TaskRunner pid=2887958)[0m                                  'entropy_coeff': 0,
+[36m(TaskRunner pid=2887958)[0m                                  'entropy_from_logits_with_chunking': False,
+[36m(TaskRunner pid=2887958)[0m                                  'fsdp_config': {'forward_prefetch': False,
+[36m(TaskRunner pid=2887958)[0m                                                  'fsdp_size': -1,
+[36m(TaskRunner pid=2887958)[0m                                                  'offload_policy': False,
+[36m(TaskRunner pid=2887958)[0m                                                  'optimizer_offload': False,
+[36m(TaskRunner pid=2887958)[0m                                                  'param_offload': False,
+[36m(TaskRunner pid=2887958)[0m                                                  'reshard_after_forward': True,
+[36m(TaskRunner pid=2887958)[0m                                                  'wrap_policy': {'min_num_params': 0}},
+[36m(TaskRunner pid=2887958)[0m                                  'grad_clip': 1.0,
+[36m(TaskRunner pid=2887958)[0m                                  'high_entropy_clip_ratio_high': 0.5,
+[36m(TaskRunner pid=2887958)[0m                                  'high_entropy_clip_ratio_low': 0.5,
+[36m(TaskRunner pid=2887958)[0m                                  'high_entropy_kl_loss_scale_coef': 0.0,
+[36m(TaskRunner pid=2887958)[0m                                  'kl_loss_coef': 0.001,
+[36m(TaskRunner pid=2887958)[0m                                  'kl_loss_type': 'low_var_kl',
+[36m(TaskRunner pid=2887958)[0m                                  'loss_agg_mode': 'token-mean',
+[36m(TaskRunner pid=2887958)[0m                                  'low_entropy_clip_ratio_high': 0.2,
+[36m(TaskRunner pid=2887958)[0m                                  'low_entropy_clip_ratio_low': 0.2,
+[36m(TaskRunner pid=2887958)[0m                                  'optim': {'lr': 1e-06,
+[36m(TaskRunner pid=2887958)[0m                                            'lr_warmup_steps': 10,
+[36m(TaskRunner pid=2887958)[0m                                            'lr_warmup_steps_ratio': 0.0,
+[36m(TaskRunner pid=2887958)[0m                                            'min_lr_ratio': 0.0,
+[36m(TaskRunner pid=2887958)[0m                                            'num_cycles': 0.5,
+[36m(TaskRunner pid=2887958)[0m                                            'total_training_steps': -1,
+[36m(TaskRunner pid=2887958)[0m                                            'warmup_style': 'constant',
+[36m(TaskRunner pid=2887958)[0m                                            'weight_decay': 0.1},
+[36m(TaskRunner pid=2887958)[0m                                  'ppo_epochs': 3,
+[36m(TaskRunner pid=2887958)[0m                                  'ppo_max_token_len_per_gpu': 9216,
+[36m(TaskRunner pid=2887958)[0m                                  'ppo_micro_batch_size': None,
+[36m(TaskRunner pid=2887958)[0m                                  'ppo_micro_batch_size_per_gpu': 1,
+[36m(TaskRunner pid=2887958)[0m                                  'ppo_mini_batch_size': 8,
+[36m(TaskRunner pid=2887958)[0m                                  'shuffle': False,
+[36m(TaskRunner pid=2887958)[0m                                  'strategy': 'fsdp',
+[36m(TaskRunner pid=2887958)[0m                                  'ulysses_sequence_parallel_size': 1,
+[36m(TaskRunner pid=2887958)[0m                                  'use_dynamic_bsz': False,
+[36m(TaskRunner pid=2887958)[0m                                  'use_kl_loss': True,
+[36m(TaskRunner pid=2887958)[0m                                  'use_token_entropy_separate': True,
+[36m(TaskRunner pid=2887958)[0m                                  'use_torch_compile': True},
+[36m(TaskRunner pid=2887958)[0m                        'hybrid_engine': True,
+[36m(TaskRunner pid=2887958)[0m                        'model': {'enable_activation_offload': False,
+[36m(TaskRunner pid=2887958)[0m                                  'enable_gradient_checkpointing': True,
+[36m(TaskRunner pid=2887958)[0m                                  'external_lib': None,
+[36m(TaskRunner pid=2887958)[0m                                  'fused_kernel_options': {'impl_backend': 'torch'},
+[36m(TaskRunner pid=2887958)[0m                                  'lora_alpha': 16,
+[36m(TaskRunner pid=2887958)[0m                                  'lora_rank': 0,
+[36m(TaskRunner pid=2887958)[0m                                  'override_config': {},
+[36m(TaskRunner pid=2887958)[0m                                  'path': 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B',
+[36m(TaskRunner pid=2887958)[0m                                  'target_modules': 'all-linear',
+[36m(TaskRunner pid=2887958)[0m                                  'trust_remote_code': False,
+[36m(TaskRunner pid=2887958)[0m                                  'use_fused_kernels': False,
+[36m(TaskRunner pid=2887958)[0m                                  'use_liger': False,
+[36m(TaskRunner pid=2887958)[0m                                  'use_remove_padding': True,
+[36m(TaskRunner pid=2887958)[0m                                  'use_shm': False},
+[36m(TaskRunner pid=2887958)[0m                        'ref': {'entropy_checkpointing': False,
+[36m(TaskRunner pid=2887958)[0m                                'entropy_from_logits_with_chunking': False,
+[36m(TaskRunner pid=2887958)[0m                                'fsdp_config': {'forward_prefetch': False,
+[36m(TaskRunner pid=2887958)[0m                                                'param_offload': False,
+[36m(TaskRunner pid=2887958)[0m                                                'reshard_after_forward': True,
+[36m(TaskRunner pid=2887958)[0m                                                'wrap_policy': {'min_num_params': 0}},
+[36m(TaskRunner pid=2887958)[0m                                'log_prob_max_token_len_per_gpu': 9216,
+[36m(TaskRunner pid=2887958)[0m                                'log_prob_micro_batch_size': None,
+[36m(TaskRunner pid=2887958)[0m                                'log_prob_micro_batch_size_per_gpu': 1,
+[36m(TaskRunner pid=2887958)[0m                                'log_prob_use_dynamic_bsz': False,
+[36m(TaskRunner pid=2887958)[0m                                'strategy': 'fsdp',
+[36m(TaskRunner pid=2887958)[0m                                'ulysses_sequence_parallel_size': 1,
+[36m(TaskRunner pid=2887958)[0m                                'use_torch_compile': True},
+[36m(TaskRunner pid=2887958)[0m                        'rollout': {'disable_log_stats': True,
+[36m(TaskRunner pid=2887958)[0m                                    'do_sample': True,
+[36m(TaskRunner pid=2887958)[0m                                    'dtype': 'bfloat16',
+[36m(TaskRunner pid=2887958)[0m                                    'enable_chunked_prefill': True,
+[36m(TaskRunner pid=2887958)[0m                                    'enforce_eager': True,
+[36m(TaskRunner pid=2887958)[0m                                    'engine_kwargs': {'sglang': {'attention_backend': None},
+[36m(TaskRunner pid=2887958)[0m                                                      'vllm': {'swap_space': None}},
+[36m(TaskRunner pid=2887958)[0m                                    'free_cache_engine': True,
+[36m(TaskRunner pid=2887958)[0m                                    'gpu_memory_utilization': 0.75,
+[36m(TaskRunner pid=2887958)[0m                                    'ignore_eos': False,
+[36m(TaskRunner pid=2887958)[0m                                    'layered_summon': False,
+[36m(TaskRunner pid=2887958)[0m                                    'load_format': 'dummy_dtensor',
+[36m(TaskRunner pid=2887958)[0m                                    'log_prob_max_token_len_per_gpu': 9216,
+[36m(TaskRunner pid=2887958)[0m                                    'log_prob_micro_batch_size': None,
+[36m(TaskRunner pid=2887958)[0m                                    'log_prob_micro_batch_size_per_gpu': 1,
+[36m(TaskRunner pid=2887958)[0m                                    'log_prob_use_dynamic_bsz': False,
+[36m(TaskRunner pid=2887958)[0m                                    'max_model_len': 9216,
+[36m(TaskRunner pid=2887958)[0m                                    'max_num_batched_tokens': 9216,
+[36m(TaskRunner pid=2887958)[0m                                    'max_num_seqs': 1024,
+[36m(TaskRunner pid=2887958)[0m                                    'mode': 'sync',
+[36m(TaskRunner pid=2887958)[0m                                    'multi_turn': {'completion_callback': None,
+[36m(TaskRunner pid=2887958)[0m                                                   'enable': False,
+[36m(TaskRunner pid=2887958)[0m                                                   'enable_tokenization_sanity_check': True,
+[36m(TaskRunner pid=2887958)[0m                                                   'max_turns': None,
+[36m(TaskRunner pid=2887958)[0m                                                   'tool_config_path': None,
+[36m(TaskRunner pid=2887958)[0m                                                   'use_inference_chat_template': False},
+[36m(TaskRunner pid=2887958)[0m                                    'n': 4,
+[36m(TaskRunner pid=2887958)[0m                                    'name': 'vllm',
+[36m(TaskRunner pid=2887958)[0m                                    'prompt_length': 1024,
+[36m(TaskRunner pid=2887958)[0m                                    'response_length': 8192,
+[36m(TaskRunner pid=2887958)[0m                                    'temperature': 1.0,
+[36m(TaskRunner pid=2887958)[0m                                    'tensor_model_parallel_size': 1,
+[36m(TaskRunner pid=2887958)[0m                                    'top_k': -1,
+[36m(TaskRunner pid=2887958)[0m                                    'top_p': 1.0,
+[36m(TaskRunner pid=2887958)[0m                                    'use_fire_sampling': False,
+[36m(TaskRunner pid=2887958)[0m                                    'val_kwargs': {'do_sample': True,
+[36m(TaskRunner pid=2887958)[0m                                                   'n': 4,
+[36m(TaskRunner pid=2887958)[0m                                                   'response_length': 8192,
+[36m(TaskRunner pid=2887958)[0m                                                   'temperature': 0.8,
+[36m(TaskRunner pid=2887958)[0m                                                   'top_k': -1,
+[36m(TaskRunner pid=2887958)[0m                                                   'top_p': 1.0}}},
+[36m(TaskRunner pid=2887958)[0m  'algorithm': {'adv_estimator': 'grpo',
+[36m(TaskRunner pid=2887958)[0m                'filter_groups': {'enable': False,
+[36m(TaskRunner pid=2887958)[0m                                  'max_num_gen_batches': 0,
+[36m(TaskRunner pid=2887958)[0m                                  'metric': None},
+[36m(TaskRunner pid=2887958)[0m                'gamma': 1.0,
+[36m(TaskRunner pid=2887958)[0m                'kl_ctrl': {'horizon': 10000,
+[36m(TaskRunner pid=2887958)[0m                            'kl_coef': 0.0,
+[36m(TaskRunner pid=2887958)[0m                            'target_kl': 0.1,
+[36m(TaskRunner pid=2887958)[0m                            'type': 'fixed'},
+[36m(TaskRunner pid=2887958)[0m                'kl_penalty': 'kl',
+[36m(TaskRunner pid=2887958)[0m                'lam': 1.0,
+[36m(TaskRunner pid=2887958)[0m                'norm_adv_by_std_in_grpo': True,
+[36m(TaskRunner pid=2887958)[0m                'pf_ppo': {'reweight_method': 'pow', 'weight_pow': 2.0},
+[36m(TaskRunner pid=2887958)[0m                'use_kl_in_reward': False,
+[36m(TaskRunner pid=2887958)[0m                'use_pf_ppo': False},
+[36m(TaskRunner pid=2887958)[0m  'critic': {'checkpoint': {'load_contents': ['model', 'optimizer', 'extra'],
+[36m(TaskRunner pid=2887958)[0m                            'save_contents': ['model', 'optimizer', 'extra']},
+[36m(TaskRunner pid=2887958)[0m             'cliprange_value': 0.5,
+[36m(TaskRunner pid=2887958)[0m             'forward_max_token_len_per_gpu': 32768,
+[36m(TaskRunner pid=2887958)[0m             'forward_micro_batch_size': None,
+[36m(TaskRunner pid=2887958)[0m             'forward_micro_batch_size_per_gpu': None,
+[36m(TaskRunner pid=2887958)[0m             'grad_clip': 1.0,
+[36m(TaskRunner pid=2887958)[0m             'loss_agg_mode': 'token-mean',
+[36m(TaskRunner pid=2887958)[0m             'model': {'enable_activation_offload': False,
+[36m(TaskRunner pid=2887958)[0m                       'enable_gradient_checkpointing': True,
+[36m(TaskRunner pid=2887958)[0m                       'external_lib': None,
+[36m(TaskRunner pid=2887958)[0m                       'fsdp_config': {'forward_prefetch': False,
+[36m(TaskRunner pid=2887958)[0m                                       'fsdp_size': -1,
+[36m(TaskRunner pid=2887958)[0m                                       'offload_policy': False,
+[36m(TaskRunner pid=2887958)[0m                                       'optimizer_offload': False,
+[36m(TaskRunner pid=2887958)[0m                                       'param_offload': False,
+[36m(TaskRunner pid=2887958)[0m                                       'reshard_after_forward': True,
+[36m(TaskRunner pid=2887958)[0m                                       'wrap_policy': {'min_num_params': 0}},
+[36m(TaskRunner pid=2887958)[0m                       'lora_alpha': 16,
+[36m(TaskRunner pid=2887958)[0m                       'lora_rank': 0,
+[36m(TaskRunner pid=2887958)[0m                       'override_config': {},
+[36m(TaskRunner pid=2887958)[0m                       'path': '~/models/deepseek-llm-7b-chat',
+[36m(TaskRunner pid=2887958)[0m                       'target_modules': 'all-linear',
+[36m(TaskRunner pid=2887958)[0m                       'tokenizer_path': 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B',
+[36m(TaskRunner pid=2887958)[0m                       'trust_remote_code': False,
+[36m(TaskRunner pid=2887958)[0m                       'use_remove_padding': False,
+[36m(TaskRunner pid=2887958)[0m                       'use_shm': False},
+[36m(TaskRunner pid=2887958)[0m             'optim': {'lr': 1e-05,
+[36m(TaskRunner pid=2887958)[0m                       'lr_warmup_steps_ratio': 0.0,
+[36m(TaskRunner pid=2887958)[0m                       'min_lr_ratio': None,
+[36m(TaskRunner pid=2887958)[0m                       'total_training_steps': -1,
+[36m(TaskRunner pid=2887958)[0m                       'warmup_style': 'constant',
+[36m(TaskRunner pid=2887958)[0m                       'weight_decay': 0.01},
+[36m(TaskRunner pid=2887958)[0m             'ppo_epochs': 3,
+[36m(TaskRunner pid=2887958)[0m             'ppo_max_token_len_per_gpu': 32768,
+[36m(TaskRunner pid=2887958)[0m             'ppo_micro_batch_size': None,
+[36m(TaskRunner pid=2887958)[0m             'ppo_micro_batch_size_per_gpu': None,
+[36m(TaskRunner pid=2887958)[0m             'ppo_mini_batch_size': 8,
+[36m(TaskRunner pid=2887958)[0m             'rollout_n': 4,
+[36m(TaskRunner pid=2887958)[0m             'shuffle': False,
+[36m(TaskRunner pid=2887958)[0m DeprecationWarning: `ray.state.available_resources_per_node` is a private attribute and access will be removed in a future Ray version.
+[36m(TaskRunner pid=2887958)[0m WARNING:2025-08-07 18:52:16,033:Waiting for register center actor ewsloJ_register_center to be ready. Elapsed time: 0 seconds out of 300 seconds.
+[36m(WorkerDict pid=2905426)[0m You are attempting to use Flash Attention 2.0 with a model not initialized on GPU. Make sure to move the model to GPU after initializing it on CPU with `model.to('cuda')`.
+[36m(TaskRunner pid=2887958)[0m             'strategy': 'fsdp',
+[36m(TaskRunner pid=2887958)[0m             'ulysses_sequence_parallel_size': 1,
+[36m(TaskRunner pid=2887958)[0m             'use_dynamic_bsz': False},
+[36m(TaskRunner pid=2887958)[0m  'custom_reward_function': {'name': 'compute_score', 'path': None},
+[36m(TaskRunner pid=2887958)[0m  'data': {'custom_cls': {'name': None, 'path': None},
+[36m(TaskRunner pid=2887958)[0m           'filter_overlong_prompts': True,
+[36m(TaskRunner pid=2887958)[0m           'filter_overlong_prompts_workers': 1,
+[36m(TaskRunner pid=2887958)[0m           'gen_batch_size': 16,
+[36m(TaskRunner pid=2887958)[0m           'image_key': 'images',
+[36m(TaskRunner pid=2887958)[0m           'max_prompt_length': 1024,
+[36m(TaskRunner pid=2887958)[0m           'max_response_length': 8192,
+[36m(TaskRunner pid=2887958)[0m           'prompt_key': 'prompt',
+[36m(TaskRunner pid=2887958)[0m           'return_full_prompt': False,
+[36m(TaskRunner pid=2887958)[0m           'return_raw_chat': False,
+[36m(TaskRunner pid=2887958)[0m           'return_raw_input_ids': False,
+[36m(TaskRunner pid=2887958)[0m           'reward_fn_key': 'data_source',
+[36m(TaskRunner pid=2887958)[0m           'shuffle': True,
+[36m(TaskRunner pid=2887958)[0m           'tokenizer': None,
+[36m(TaskRunner pid=2887958)[0m           'train_batch_size': 16,
+[36m(TaskRunner pid=2887958)[0m           'train_files': './data/train/archercoder-1.5b-train.json',
+[36m(TaskRunner pid=2887958)[0m           'truncation': 'error',
+[36m(TaskRunner pid=2887958)[0m           'trust_remote_code': False,
+[36m(TaskRunner pid=2887958)[0m           'use_shm': False,
+[36m(TaskRunner pid=2887958)[0m           'val_batch_size': None,
+[36m(TaskRunner pid=2887958)[0m           'val_files': './data/test/livecodebench_v5.json',
+[36m(TaskRunner pid=2887958)[0m           'validation_shuffle': False,
+[36m(TaskRunner pid=2887958)[0m           'video_key': 'videos'},
+[36m(TaskRunner pid=2887958)[0m  'ray_init': {'num_cpus': None, 'timeline_json_file': None},
+[36m(TaskRunner pid=2887958)[0m  'reward_model': {'enable': False,
+[36m(TaskRunner pid=2887958)[0m                   'forward_max_token_len_per_gpu': 32768,
+[36m(TaskRunner pid=2887958)[0m                   'launch_reward_fn_async': False,
+[36m(TaskRunner pid=2887958)[0m                   'max_length': None,
+[36m(TaskRunner pid=2887958)[0m                   'micro_batch_size': None,
+[36m(TaskRunner pid=2887958)[0m                   'micro_batch_size_per_gpu': None,
+[36m(TaskRunner pid=2887958)[0m                   'model': {'external_lib': None,
+[36m(TaskRunner pid=2887958)[0m                             'fsdp_config': {'forward_prefetch': False,
+[36m(TaskRunner pid=2887958)[0m                                             'fsdp_size': -1,
+[36m(TaskRunner pid=2887958)[0m                                             'param_offload': False,
+[36m(TaskRunner pid=2887958)[0m                                             'reshard_after_forward': True,
+[36m(TaskRunner pid=2887958)[0m                                             'wrap_policy': {'min_num_params': 0}},
+[36m(TaskRunner pid=2887958)[0m                             'input_tokenizer': 'deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B',
+[36m(TaskRunner pid=2887958)[0m                             'path': '~/models/FsfairX-LLaMA3-RM-v0.1',
+[36m(TaskRunner pid=2887958)[0m                             'trust_remote_code': False,
+[36m(TaskRunner pid=2887958)[0m                             'use_fused_kernels': False,
+[36m(TaskRunner pid=2887958)[0m                             'use_remove_padding': False,
+[36m(TaskRunner pid=2887958)[0m                             'use_shm': False},
+[36m(TaskRunner pid=2887958)[0m                   'overlong_buffer': {'enable': False,
+[36m(TaskRunner pid=2887958)[0m                                       'len': 16,
+[36m(TaskRunner pid=2887958)[0m                                       'log': False,
+[36m(TaskRunner pid=2887958)[0m                                       'penalty_factor': 1.0},
+[36m(TaskRunner pid=2887958)[0m                   'reward_manager': 'wizard',
+[36m(TaskRunner pid=2887958)[0m                   'sandbox_fusion': {'max_concurrent': 64, 'url': None},
+[36m(TaskRunner pid=2887958)[0m                   'strategy': 'fsdp',
+[36m(TaskRunner pid=2887958)[0m                   'ulysses_sequence_parallel_size': 1,
+[36m(TaskRunner pid=2887958)[0m                   'use_dynamic_bsz': False},
+[36m(TaskRunner pid=2887958)[0m  'trainer': {'balance_batch': False,
+[36m(TaskRunner pid=2887958)[0m              'critic_warmup': 0,
+[36m(TaskRunner pid=2887958)[0m              'default_hdfs_dir': None,
+[36m(TaskRunner pid=2887958)[0m              'default_local_dir': './output/ArcherCodeR/Archer-Qwen2.5-1.5B-Fast',
+[36m(TaskRunner pid=2887958)[0m              'del_local_ckpt_after_load': False,
+[36m(TaskRunner pid=2887958)[0m              'device': 'cuda',
+[36m(TaskRunner pid=2887958)[0m              'enable_overlong_filter': False,
+[36m(TaskRunner pid=2887958)[0m              'experiment_name': 'Archer-Qwen2.5-1.5B-Fast',
+[36m(TaskRunner pid=2887958)[0m              'log_val_generations': 0,
+[36m(TaskRunner pid=2887958)[0m              'logger': ['console', 'wandb'],
+[36m(TaskRunner pid=2887958)[0m              'max_actor_ckpt_to_keep': None,
+[36m(TaskRunner pid=2887958)[0m              'max_critic_ckpt_to_keep': None,
+[36m(TaskRunner pid=2887958)[0m              'n_gpus_per_node': 8,
+[36m(TaskRunner pid=2887958)[0m              'nnodes': 1,
+[36m(TaskRunner pid=2887958)[0m              'project_name': 'ArcherCodeR',
+[36m(TaskRunner pid=2887958)[0m              'ray_wait_register_center_timeout': 300,
+[36m(TaskRunner pid=2887958)[0m              'rejection_sample': True,
+[36m(TaskRunner pid=2887958)[0m              'resume_from_path': None,
+[36m(TaskRunner pid=2887958)[0m              'resume_mode': 'auto',
+[36m(TaskRunner pid=2887958)[0m              'rollout_data_dir': None,
+[36m(TaskRunner pid=2887958)[0m              'save_freq': 10,
+[36m(TaskRunner pid=2887958)[0m              'test_freq': -1,
+[36m(TaskRunner pid=2887958)[0m              'total_epochs': 10,
+[36m(TaskRunner pid=2887958)[0m              'total_training_steps': None,
+[36m(TaskRunner pid=2887958)[0m              'val_before_train': False,
+[36m(TaskRunner pid=2887958)[0m              'validation_data_dir': './output/ArcherCodeR/Archer-Qwen2.5-1.5B-Fast/eval'}}
+[36m(TaskRunner pid=2887958)[0m [validate_config] All configuration checks passed successfully!
+[36m(TaskRunner pid=2887958)[0m Using dataset class: RLHFDataset
+[36m(TaskRunner pid=2887958)[0m Error reading parquet file ./data/train/archercoder-1.5b-train.json: Could not open Parquet input source '<Buffer>': Parquet magic bytes not found in footer. Either the file is corrupted or this is not a parquet file.
+[36m(TaskRunner pid=2887958)[0m Successfully loaded JSON version from ./data/train/archercoder-1.5b-train.json
+[36m(TaskRunner pid=2887958)[0m dataset len: 6753
+[36m(TaskRunner pid=2887958)[0m filter dataset len: 6677
+[36m(TaskRunner pid=2887958)[0m Using dataset class: RLHFDataset
+[36m(TaskRunner pid=2887958)[0m Error reading parquet file ./data/test/livecodebench_v5.json: Could not open Parquet input source '<Buffer>': Parquet magic bytes not found in footer. Either the file is corrupted or this is not a parquet file.
+[36m(TaskRunner pid=2887958)[0m Successfully loaded JSON version from ./data/test/livecodebench_v5.json
+[36m(TaskRunner pid=2887958)[0m dataset len: 279
+[36m(TaskRunner pid=2887958)[0m filter dataset len: 263
+[36m(TaskRunner pid=2887958)[0m Size of train dataloader: 417, Size of val dataloader: 1
+[36m(TaskRunner pid=2887958)[0m Total training steps: 4170
+[36m(TaskRunner pid=2887958)[0m colocated worker base class <class 'verl.single_controller.base.worker.Worker'>
+[36m(WorkerDict pid=2905166)[0m Model config after override: Qwen2Config {
+[36m(WorkerDict pid=2905166)[0m   "architectures": [
+[36m(WorkerDict pid=2905166)[0m     "Qwen2ForCausalLM"
+[36m(WorkerDict pid=2905166)[0m   ],
+[36m(WorkerDict pid=2905166)[0m   "attention_dropout": 0.0,
+[36m(WorkerDict pid=2905166)[0m   "bos_token_id": 151646,
+[36m(WorkerDict pid=2905166)[0m   "eos_token_id": 151643,
+[36m(WorkerDict pid=2905166)[0m   "hidden_act": "silu",
+[36m(WorkerDict pid=2905166)[0m   "hidden_size": 1536,
+[36m(WorkerDict pid=2905166)[0m   "initializer_range": 0.02,
+[36m(WorkerDict pid=2905166)[0m   "intermediate_size": 8960,
+[36m(WorkerDict pid=2905166)[0m   "max_position_embeddings": 131072,
+[36m(WorkerDict pid=2905166)[0m   "max_window_layers": 21,
+[36m(WorkerDict pid=2905166)[0m   "model_type": "qwen2",
+[36m(WorkerDict pid=2905166)[0m   "num_attention_heads": 12,
+[36m(WorkerDict pid=2905166)[0m   "num_hidden_layers": 28,
+[36m(WorkerDict pid=2905166)[0m   "num_key_value_heads": 2,
+[36m(WorkerDict pid=2905166)[0m   "pad_token_id": 151643,
+[36m(WorkerDict pid=2905166)[0m   "rms_norm_eps": 1e-06,
+[36m(WorkerDict pid=2905166)[0m   "rope_scaling": null,
+[36m(WorkerDict pid=2905166)[0m   "rope_theta": 10000,
+[36m(WorkerDict pid=2905166)[0m   "sliding_window": 4096,
+[36m(WorkerDict pid=2905166)[0m   "tie_word_embeddings": false,
+[36m(WorkerDict pid=2905166)[0m   "torch_dtype": "bfloat16",
+[36m(WorkerDict pid=2905166)[0m   "transformers_version": "4.51.3",
+[36m(WorkerDict pid=2905166)[0m   "use_cache": true,
+[36m(WorkerDict pid=2905166)[0m   "use_mrope": false,
+[36m(WorkerDict pid=2905166)[0m   "use_sliding_window": false,
+[36m(WorkerDict pid=2905166)[0m   "vocab_size": 151936
+[36m(WorkerDict pid=2905166)[0m }
+[36m(WorkerDict pid=2905166)[0m 
+[36m(WorkerDict pid=2905428)[0m Monkey patch _flash_attention_forward in transformers.integrations.flash_attention
+[36m(WorkerDict pid=2905428)[0m Skipping monkey patch for Qwen2ForCausalLM as use_fused_kernels is False or fused_kernels_backend is torch
+[36m(WorkerDict pid=2905166)[0m Qwen2ForCausalLM contains 1.78B parameters
+[36m(WorkerDict pid=2905166)[0m wrap_policy: functools.partial(<function _or_policy at 0x7fb9f36eca60>, policies=[functools.partial(<function transformer_auto_wrap_policy at 0x7fb9f36ec940>, transformer_layer_cls={<class 'transformers.models.qwen2.modeling_qwen2.Qwen2DecoderLayer'>})])
+[36m(WorkerDict pid=2905166)[0m NCCL version 2.21.5+cuda12.4
+Error executing job with overrides: ['data.train_files=./data/train/archercoder-1.5b-train.json', 'data.val_files=./data/test/livecodebench_v5.json', 'data.prompt_key=prompt', 'data.filter_overlong_prompts=True', 'data.truncation=error', 'data.max_prompt_length=1024', 'data.max_response_length=8192', 'data.gen_batch_size=16', 'data.train_batch_size=16', 'actor_rollout_ref.rollout.n=4', 'algorithm.adv_estimator=grpo', 'algorithm.use_kl_in_reward=False', 'algorithm.kl_ctrl.kl_coef=0.0', 'actor_rollout_ref.actor.use_kl_loss=True', 'actor_rollout_ref.actor.kl_loss_coef=0.001', 'actor_rollout_ref.actor.kl_loss_type=low_var_kl', 'actor_rollout_ref.actor.clip_ratio_low=0.2', 'actor_rollout_ref.actor.clip_ratio_high=0.2', 'actor_rollout_ref.actor.clip_ratio_c=10.0', 'actor_rollout_ref.model.use_remove_padding=True', 'actor_rollout_ref.actor.use_dynamic_bsz=False', 'actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1', '+actor_rollout_ref.actor.use_token_entropy_separate=True', '+actor_rollout_ref.actor.high_entropy_kl_loss_scale_coef=0.0', '+actor_rollout_ref.actor.low_entropy_clip_ratio_low=0.2', '+actor_rollout_ref.actor.low_entropy_clip_ratio_high=0.2', '+actor_rollout_ref.actor.high_entropy_clip_ratio_low=0.5', '+actor_rollout_ref.actor.high_entropy_clip_ratio_high=0.5', 'actor_rollout_ref.ref.log_prob_use_dynamic_bsz=False', 'actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1', 'actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=False', 'actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1', 'actor_rollout_ref.actor.ppo_max_token_len_per_gpu=9216', 'actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=9216', 'actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=9216', 'actor_rollout_ref.model.path=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B', 'actor_rollout_ref.model.enable_gradient_checkpointing=True', 'actor_rollout_ref.actor.optim.lr=1e-6', 'actor_rollout_ref.actor.optim.lr_warmup_steps=10', 'actor_rollout_ref.actor.optim.weight_decay=0.1', 'actor_rollout_ref.actor.ppo_epochs=3', 'actor_rollout_ref.actor.ppo_mini_batch_size=8', 'actor_rollout_ref.actor.fsdp_config.param_offload=False', 'actor_rollout_ref.actor.fsdp_config.optimizer_offload=False', 'actor_rollout_ref.actor.entropy_coeff=0', 'actor_rollout_ref.actor.grad_clip=1.0', 'actor_rollout_ref.actor.loss_agg_mode=token-mean', 'actor_rollout_ref.actor.ulysses_sequence_parallel_size=1', 'actor_rollout_ref.rollout.gpu_memory_utilization=0.75', 'actor_rollout_ref.rollout.tensor_model_parallel_size=1', 'actor_rollout_ref.rollout.enable_chunked_prefill=True', 'actor_rollout_ref.rollout.max_num_batched_tokens=9216', 'actor_rollout_ref.rollout.max_model_len=9216', 'actor_rollout_ref.rollout.temperature=1.0', 'actor_rollout_ref.rollout.top_p=1.0', 'actor_rollout_ref.rollout.top_k=-1', 'actor_rollout_ref.rollout.val_kwargs.temperature=0.8', 'actor_rollout_ref.rollout.val_kwargs.top_p=1.0', 'actor_rollout_ref.rollout.val_kwargs.top_k=-1', 'actor_rollout_ref.rollout.val_kwargs.do_sample=True', 'actor_rollout_ref.rollout.val_kwargs.n=4', '+actor_rollout_ref.rollout.val_kwargs.response_length=8192', 'actor_rollout_ref.ref.fsdp_config.param_offload=False', 'actor_rollout_ref.ref.ulysses_sequence_parallel_size=1', 'actor_rollout_ref.actor.fsdp_config.fsdp_size=-1', 'reward_model.reward_manager=wizard', 'reward_model.overlong_buffer.enable=False', 'reward_model.overlong_buffer.len=16', 'reward_model.overlong_buffer.penalty_factor=1.0', 'trainer.logger=[console,wandb]', 'trainer.project_name=ArcherCodeR', 'trainer.experiment_name=Archer-Qwen2.5-1.5B-Fast', 'trainer.n_gpus_per_node=8', 'trainer.nnodes=1', 'trainer.balance_batch=False', 'trainer.val_before_train=False', 'trainer.test_freq=-1', 'trainer.save_freq=10', 'trainer.total_epochs=10', 'trainer.default_local_dir=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-Fast', 'trainer.resume_mode=auto', '+trainer.validation_data_dir=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-Fast/eval', '+trainer.enable_overlong_filter=False', '+trainer.rejection_sample=True']
+Traceback (most recent call last):
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/dapo/main_dapo.py", line 22, in main
+    run_ppo(config)
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/dapo/main_dapo.py", line 34, in run_ppo
+    ray.get(runner.run.remote(config))
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/ray/_private/auto_init_hook.py", line 21, in auto_init_wrapper
+    return fn(*args, **kwargs)
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/ray/_private/worker.py", line 2755, in get
+    values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/ray/_private/worker.py", line 906, in get_objects
+    raise value.as_instanceof_cause()
+ray.exceptions.RayTaskError(DistBackendError): [36mray::TaskRunner.run()[39m (pid=2887958, ip=172.16.7.122, actor_id=91d7b7d34dd4d6ded13dc59101000000, repr=<main_dapo.TaskRunner object at 0x7f9755143970>)
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/dapo/main_dapo.py", line 153, in run
+    trainer.init_workers()
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/trainer/ppo/ray_trainer.py", line 815, in init_workers
+    self.ref_policy_wg.init_model()
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 51, in __call__
+    output = ray.get(output)
+ray.exceptions.RayTaskError(DistBackendError): [36mray::WorkerDict.ref_init_model()[39m (pid=2905425, ip=172.16.7.122, actor_id=e25d563499f4bbe5f5437b4601000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7ee9a6232470>)
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 645, in func
+    return getattr(self.worker_dict[key], name)(*args, **kwargs)
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/base/decorator.py", line 540, in inner
+    return func(*args, **kwargs)
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 546, in init_model
+    self.ref_module_fsdp = self._build_model_optimizer(
+  File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 305, in _build_model_optimizer
+    actor_module_fsdp = FSDP(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 483, in __init__
+    _auto_wrap(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_wrap_utils.py", line 101, in _auto_wrap
+    _recursive_wrap(**recursive_wrap_kwargs, **root_kwargs)  # type: ignore[arg-type]
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+    wrapped_child, num_wrapped_params = _recursive_wrap(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+    wrapped_child, num_wrapped_params = _recursive_wrap(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+    wrapped_child, num_wrapped_params = _recursive_wrap(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 563, in _recursive_wrap
+    return _wrap(module, wrapper_cls, **kwargs), nonwrapped_numel
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 492, in _wrap
+    return wrapper_cls(module, **kwargs)
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 509, in __init__
+    _init_param_handle_from_module(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 629, in _init_param_handle_from_module
+    _sync_module_params_and_buffers(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 1126, in _sync_module_params_and_buffers
+    _sync_params_and_buffers(
+  File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/utils.py", line 328, in _sync_params_and_buffers
+    dist._broadcast_coalesced(
+torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/NCCLUtils.hpp:317, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.21.5
+ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error. 
+Last error:
+Call to ibv_modify_qp failed with error Connection timed out errno 110
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+[36m(TaskRunner pid=2887958)[0m Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): [36mray::WorkerDict.ref_init_model()[39m (pid=2905426, ip=172.16.7.122, actor_id=4a953cd0c057009420673a6901000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7f0b55b32530>)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 645, in func
+[36m(TaskRunner pid=2887958)[0m     return getattr(self.worker_dict[key], name)(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/base/decorator.py", line 540, in inner
+[36m(TaskRunner pid=2887958)[0m     return func(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 546, in init_model
+[36m(TaskRunner pid=2887958)[0m     self.ref_module_fsdp = self._build_model_optimizer(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 305, in _build_model_optimizer
+[36m(TaskRunner pid=2887958)[0m     actor_module_fsdp = FSDP(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 483, in __init__
+[36m(TaskRunner pid=2887958)[0m     _auto_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_wrap_utils.py", line 101, in _auto_wrap
+[36m(TaskRunner pid=2887958)[0m     _recursive_wrap(**recursive_wrap_kwargs, **root_kwargs)  # type: ignore[arg-type]
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 563, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     return _wrap(module, wrapper_cls, **kwargs), nonwrapped_numel
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 492, in _wrap
+[36m(TaskRunner pid=2887958)[0m     return wrapper_cls(module, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 509, in __init__
+[36m(TaskRunner pid=2887958)[0m     _init_param_handle_from_module(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 629, in _init_param_handle_from_module
+[36m(TaskRunner pid=2887958)[0m     _sync_module_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 1126, in _sync_module_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     _sync_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/utils.py", line 328, in _sync_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     dist._broadcast_coalesced(
+[36m(TaskRunner pid=2887958)[0m torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/NCCLUtils.hpp:317, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.21.5
+[36m(TaskRunner pid=2887958)[0m ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error. 
+[36m(TaskRunner pid=2887958)[0m Last error:
+[36m(TaskRunner pid=2887958)[0m Call to ibv_modify_qp failed with error Connection timed out errno 110
+[36m(TaskRunner pid=2887958)[0m Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): [36mray::WorkerDict.ref_init_model()[39m (pid=2905429, ip=172.16.7.122, actor_id=3429355f19ca4ce842bc861301000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7f3bbad1a500>)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 645, in func
+[36m(TaskRunner pid=2887958)[0m     return getattr(self.worker_dict[key], name)(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/base/decorator.py", line 540, in inner
+[36m(TaskRunner pid=2887958)[0m     return func(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 546, in init_model
+[36m(TaskRunner pid=2887958)[0m     self.ref_module_fsdp = self._build_model_optimizer(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 305, in _build_model_optimizer
+[36m(TaskRunner pid=2887958)[0m     actor_module_fsdp = FSDP(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 483, in __init__
+[36m(TaskRunner pid=2887958)[0m     _auto_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_wrap_utils.py", line 101, in _auto_wrap
+[36m(TaskRunner pid=2887958)[0m     _recursive_wrap(**recursive_wrap_kwargs, **root_kwargs)  # type: ignore[arg-type]
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 563, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     return _wrap(module, wrapper_cls, **kwargs), nonwrapped_numel
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 492, in _wrap
+[36m(TaskRunner pid=2887958)[0m     return wrapper_cls(module, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 509, in __init__
+[36m(TaskRunner pid=2887958)[0m     _init_param_handle_from_module(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 629, in _init_param_handle_from_module
+[36m(TaskRunner pid=2887958)[0m     _sync_module_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 1126, in _sync_module_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     _sync_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/utils.py", line 328, in _sync_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     dist._broadcast_coalesced(
+[36m(TaskRunner pid=2887958)[0m torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/NCCLUtils.hpp:317, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.21.5
+[36m(TaskRunner pid=2887958)[0m ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error. 
+[36m(TaskRunner pid=2887958)[0m Last error:
+[36m(TaskRunner pid=2887958)[0m Call to ibv_modify_qp failed with error Connection timed out errno 110
+[36m(TaskRunner pid=2887958)[0m Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): [36mray::WorkerDict.ref_init_model()[39m (pid=2905427, ip=172.16.7.122, actor_id=cc85ab4270bccf8f424cd49f01000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7f888604a4a0>)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 645, in func
+[36m(TaskRunner pid=2887958)[0m     return getattr(self.worker_dict[key], name)(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/base/decorator.py", line 540, in inner
+[36m(TaskRunner pid=2887958)[0m     return func(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 546, in init_model
+[36m(TaskRunner pid=2887958)[0m     self.ref_module_fsdp = self._build_model_optimizer(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 305, in _build_model_optimizer
+[36m(TaskRunner pid=2887958)[0m     actor_module_fsdp = FSDP(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 483, in __init__
+[36m(TaskRunner pid=2887958)[0m     _auto_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_wrap_utils.py", line 101, in _auto_wrap
+[36m(TaskRunner pid=2887958)[0m     _recursive_wrap(**recursive_wrap_kwargs, **root_kwargs)  # type: ignore[arg-type]
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 563, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     return _wrap(module, wrapper_cls, **kwargs), nonwrapped_numel
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 492, in _wrap
+[36m(TaskRunner pid=2887958)[0m     return wrapper_cls(module, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 509, in __init__
+[36m(TaskRunner pid=2887958)[0m     _init_param_handle_from_module(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 629, in _init_param_handle_from_module
+[36m(TaskRunner pid=2887958)[0m     _sync_module_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 1126, in _sync_module_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     _sync_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/utils.py", line 328, in _sync_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     dist._broadcast_coalesced(
+[36m(TaskRunner pid=2887958)[0m torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/NCCLUtils.hpp:317, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.21.5
+[36m(TaskRunner pid=2887958)[0m ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error. 
+[36m(TaskRunner pid=2887958)[0m Last error:
+[36m(TaskRunner pid=2887958)[0m Call to ibv_modify_qp failed with error Connection timed out errno 110
+[36m(TaskRunner pid=2887958)[0m Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): [36mray::WorkerDict.ref_init_model()[39m (pid=2905428, ip=172.16.7.122, actor_id=0133c5a256c0297060aab01c01000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7f3037232530>)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 645, in func
+[36m(TaskRunner pid=2887958)[0m     return getattr(self.worker_dict[key], name)(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/base/decorator.py", line 540, in inner
+[36m(TaskRunner pid=2887958)[0m     return func(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 546, in init_model
+[36m(TaskRunner pid=2887958)[0m     self.ref_module_fsdp = self._build_model_optimizer(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 305, in _build_model_optimizer
+[36m(TaskRunner pid=2887958)[0m     actor_module_fsdp = FSDP(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 483, in __init__
+[36m(TaskRunner pid=2887958)[0m     _auto_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_wrap_utils.py", line 101, in _auto_wrap
+[36m(TaskRunner pid=2887958)[0m     _recursive_wrap(**recursive_wrap_kwargs, **root_kwargs)  # type: ignore[arg-type]
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 563, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     return _wrap(module, wrapper_cls, **kwargs), nonwrapped_numel
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 492, in _wrap
+[36m(TaskRunner pid=2887958)[0m     return wrapper_cls(module, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 509, in __init__
+[36m(TaskRunner pid=2887958)[0m     _init_param_handle_from_module(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 629, in _init_param_handle_from_module
+[36m(TaskRunner pid=2887958)[0m     _sync_module_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 1126, in _sync_module_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     _sync_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/utils.py", line 328, in _sync_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     dist._broadcast_coalesced(
+[36m(TaskRunner pid=2887958)[0m torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/NCCLUtils.hpp:317, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.21.5
+[36m(TaskRunner pid=2887958)[0m ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error. 
+[36m(TaskRunner pid=2887958)[0m Last error:
+[36m(TaskRunner pid=2887958)[0m Call to ibv_modify_qp failed with error Connection timed out errno 110
+[36m(TaskRunner pid=2887958)[0m Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): [36mray::WorkerDict.ref_init_model()[39m (pid=2905166, ip=172.16.7.122, actor_id=99c59807288b542a03f377a401000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7fb9000c2620>)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 645, in func
+[36m(TaskRunner pid=2887958)[0m     return getattr(self.worker_dict[key], name)(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/base/decorator.py", line 540, in inner
+[36m(TaskRunner pid=2887958)[0m     return func(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 546, in init_model
+[36m(TaskRunner pid=2887958)[0m     self.ref_module_fsdp = self._build_model_optimizer(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 305, in _build_model_optimizer
+[36m(TaskRunner pid=2887958)[0m     actor_module_fsdp = FSDP(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 483, in __init__
+[36m(TaskRunner pid=2887958)[0m     _auto_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_wrap_utils.py", line 101, in _auto_wrap
+[36m(TaskRunner pid=2887958)[0m     _recursive_wrap(**recursive_wrap_kwargs, **root_kwargs)  # type: ignore[arg-type]
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 563, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     return _wrap(module, wrapper_cls, **kwargs), nonwrapped_numel
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 492, in _wrap
+[36m(TaskRunner pid=2887958)[0m     return wrapper_cls(module, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 509, in __init__
+[36m(TaskRunner pid=2887958)[0m     _init_param_handle_from_module(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 629, in _init_param_handle_from_module
+[36m(TaskRunner pid=2887958)[0m     _sync_module_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 1126, in _sync_module_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     _sync_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/utils.py", line 328, in _sync_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     dist._broadcast_coalesced(
+[36m(TaskRunner pid=2887958)[0m torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/NCCLUtils.hpp:317, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.21.5
+[36m(TaskRunner pid=2887958)[0m ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error. 
+[36m(TaskRunner pid=2887958)[0m Last error:
+[36m(TaskRunner pid=2887958)[0m Call to ibv_modify_qp failed with error Connection timed out errno 110
+[36m(TaskRunner pid=2887958)[0m Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): [36mray::WorkerDict.ref_init_model()[39m (pid=2905424, ip=172.16.7.122, actor_id=90b07ca9993ee831b782fbdf01000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0x7f2a6d05e500>)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/ray/base.py", line 645, in func
+[36m(TaskRunner pid=2887958)[0m     return getattr(self.worker_dict[key], name)(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/single_controller/base/decorator.py", line 540, in inner
+[36m(TaskRunner pid=2887958)[0m     return func(*args, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 546, in init_model
+[36m(TaskRunner pid=2887958)[0m     self.ref_module_fsdp = self._build_model_optimizer(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/verl/workers/fsdp_workers.py", line 305, in _build_model_optimizer
+[36m(TaskRunner pid=2887958)[0m     actor_module_fsdp = FSDP(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 483, in __init__
+[36m(TaskRunner pid=2887958)[0m     _auto_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_wrap_utils.py", line 101, in _auto_wrap
+[36m(TaskRunner pid=2887958)[0m     _recursive_wrap(**recursive_wrap_kwargs, **root_kwargs)  # type: ignore[arg-type]
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 545, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     wrapped_child, num_wrapped_params = _recursive_wrap(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 563, in _recursive_wrap
+[36m(TaskRunner pid=2887958)[0m     return _wrap(module, wrapper_cls, **kwargs), nonwrapped_numel
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/wrap.py", line 492, in _wrap
+[36m(TaskRunner pid=2887958)[0m     return wrapper_cls(module, **kwargs)
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/fully_sharded_data_parallel.py", line 509, in __init__
+[36m(TaskRunner pid=2887958)[0m     _init_param_handle_from_module(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 629, in _init_param_handle_from_module
+[36m(TaskRunner pid=2887958)[0m     _sync_module_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/fsdp/_init_utils.py", line 1126, in _sync_module_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     _sync_params_and_buffers(
+[36m(TaskRunner pid=2887958)[0m   File "/data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages/torch/distributed/utils.py", line 328, in _sync_params_and_buffers
+[36m(TaskRunner pid=2887958)[0m     dist._broadcast_coalesced(
+[36m(TaskRunner pid=2887958)[0m torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/NCCLUtils.hpp:317, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.21.5
+[36m(TaskRunner pid=2887958)[0m ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error. 
+[36m(TaskRunner pid=2887958)[0m Last error:
+[36m(TaskRunner pid=2887958)[0m Call to ibv_modify_qp failed with error Connection timed out errno 110
+[36m(WorkerDict pid=2905425)[0m You are attempting to use Flash Attention 2.0 with a model not initialized on GPU. Make sure to move the model to GPU after initializing it on CPU with `model.to('cuda')`.[32m [repeated 7x across cluster][0m
+[36m(WorkerDict pid=2905425)[0m Monkey patch _flash_attention_forward in transformers.integrations.flash_attention[32m [repeated 7x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)[0m
+[36m(WorkerDict pid=2905425)[0m Skipping monkey patch for Qwen2ForCausalLM as use_fused_kernels is False or fused_kernels_backend is torch[32m [repeated 7x across cluster][0m

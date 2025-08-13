@@ -13,7 +13,18 @@ export NCCL_MIN_NCHANNELS=16
 export NCCL_IB_HCA=mlx5
 export NCCL_DEBUG=WARN
 export HYDRA_FULL_ERROR=1
-export WANDB_API_KEY=5c271ef60b4c4753def92be733cf80487f0c7e78
+
+# Check if sensitive environment variables are set
+if [ -z "$WANDB_API_KEY" ]; then
+    echo "Warning: WANDB_API_KEY environment variable is not set"
+fi
+
+if [ -z "$HF_TOKEN" ]; then
+    echo "Warning: HF_TOKEN environment variable is not set"
+fi
+
+export WANDB_API_KEY=$WANDB_API_KEY
+export HF_TOKEN=$HF_TOKEN
 
 # 停止已存在的Ray集群
 ray stop

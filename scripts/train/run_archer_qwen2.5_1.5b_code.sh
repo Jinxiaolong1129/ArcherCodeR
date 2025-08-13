@@ -70,7 +70,7 @@ high_entropy_clip_ratio_high=0.5
 use_overlong_filter=False
 
 
-python -m dapo.main_dapo \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \

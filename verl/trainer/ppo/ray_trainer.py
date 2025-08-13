@@ -743,6 +743,7 @@ class RayPPOTrainer:
             metric_dict[f'val_{key_info}/max'] = max(lst)
             metric_dict[f'val_{key_info}/mean'] = sum(lst) / len(lst)
             metric_dict[f'val_{key_info}/min'] = min(lst)
+            max_response_length = self.config.data.max_response_length
             metric_dict[f'val_{key_info}/clip_ratio'] = sum([_ == max_response_length for _ in lst]) / len(lst)
 
         return metric_dict

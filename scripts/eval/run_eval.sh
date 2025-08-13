@@ -18,7 +18,9 @@ output_dir=${model_path}/output
 data_dir=${base_dir}/data/test
 dataset=livecodebench_v5
 
-python -m verl.trainer.main_generation \
+max_model_len=$((max_prompt_length + max_response_length))
+
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_generation \
     trainer.nnodes=${nnodes} \
     trainer.n_gpus_per_node=8 \
     model.path=${model_path} \
@@ -36,4 +38,4 @@ python -m verl.trainer.main_generation \
     rollout.top_p=1.0 \
     rollout.prompt_length=$max_prompt_length \
     rollout.response_length=$max_response_length \
-    rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length))
+    rollout.max_num_batched_tokens=$max_model_len

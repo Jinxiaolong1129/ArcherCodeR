@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-# 单节点配置
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Qwen2.5-1.5B-Single'
+exp_name='Archer-Qwen2.5-1.5B'
 
 adv_estimator=grpo
 
@@ -28,10 +27,9 @@ overlong_buffer_len=16
 overlong_penalty_factor=1.0
 v_max_response_length=$((1024 * 32))
 
-# 调整单节点的batch size
-train_prompt_bsz=32
+train_prompt_bsz=64
 gen_prompt_bsz=$((train_prompt_bsz * 1))
-train_prompt_mini_bsz=16
+train_prompt_mini_bsz=32
 
 # Paths
 MODEL_PATH=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
@@ -39,10 +37,6 @@ CKPTS_DIR=./output/${project_name}/${exp_name}
 data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
 TEST_FILE=$data_dir/test/livecodebench_v5.json
-
-# Create output directory if it doesn't exist
-mkdir -p "${CKPTS_DIR}"
-mkdir -p "${CKPTS_DIR}/eval"
 
 # Algorithm
 n_resp_per_prompt=16
@@ -75,7 +69,6 @@ high_entropy_clip_ratio_high=0.5
 # Trainer
 use_overlong_filter=False
 
-mkdir -p ${CKPTS_DIR}
 
 /data/xuandong_zhao/anaconda3/envs/archer/bin/python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
@@ -150,7 +143,7 @@ mkdir -p ${CKPTS_DIR}
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes="${nnodes}" \
     trainer.balance_batch=False \
     trainer.val_before_train=False \
@@ -161,7 +154,4 @@ mkdir -p ${CKPTS_DIR}
     trainer.resume_mode=auto \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
-    +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 
-
-
-# bash scripts/train/run_archer_qwen2.5_1.5b_code_single.sh
+    +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log

@@ -1,0 +1,540 @@
+🚀 Simple NCCL Communication Test
+SLURM_JOB_ID: 24136
+SLURM_JOB_NODELIST: compute-891
+Date: Thu Aug  7 18:18:14 UTC 2025
+
+Environment:
+  MASTER_ADDR: compute-891
+  WORLD_SIZE: 8
+  Node: compute-891
+
+🧪 Test 1: NCCL with InfiniBand
+----------------------------------------
+NCCL Settings:
+  NCCL_IB_DISABLE: Not set
+  NCCL_SOCKET_IFNAME: Not set
+
+NCCL version 2.21.5+cuda12.4
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 7/8, Local Rank: 7
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 7: Starting NCCL tests...
+   Rank 7: Using device cuda:7
+   Rank 7: Initializing process group...
+   Rank 7: ✅ Process group initialized in 0.00s
+   Rank 7: Testing small all-reduce...
+   Rank 7: ✅ Small all-reduce passed (1.390s)
+   Rank 7: Testing broadcast...
+   Rank 7: ✅ Broadcast passed (0.000s)
+   Rank 7: Testing large tensor all-reduce...
+   Rank 7: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~514.30 GB/s
+   Rank 7: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3556.22 GB/s
+   Rank 7: Testing all-gather...
+   Rank 7: ✅ All-gather passed (0.000s)
+   Rank 7: 🎉 All NCCL tests passed!
+
+🎉 Rank 7: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 0/8, Local Rank: 0
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 0: Starting NCCL tests...
+   Rank 0: Using device cuda:0
+   Rank 0: Initializing process group...
+   Rank 0: ✅ Process group initialized in 0.43s
+   Rank 0: Testing small all-reduce...
+   Rank 0: ✅ Small all-reduce passed (1.190s)
+   Rank 0: Testing broadcast...
+   Rank 0: ✅ Broadcast passed (0.000s)
+   Rank 0: Testing large tensor all-reduce...
+   Rank 0: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~472.94 GB/s
+   Rank 0: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3385.62 GB/s
+   Rank 0: Testing all-gather...
+   Rank 0: ✅ All-gather passed (0.000s)
+   Rank 0: 🎉 All NCCL tests passed!
+
+🎉 Rank 0: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 3/8, Local Rank: 3
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 3: Starting NCCL tests...
+   Rank 3: Using device cuda:3
+   Rank 3: Initializing process group...
+   Rank 3: ✅ Process group initialized in 0.00s
+   Rank 3: Testing small all-reduce...
+   Rank 3: ✅ Small all-reduce passed (1.277s)
+   Rank 3: Testing broadcast...
+   Rank 3: ✅ Broadcast passed (0.000s)
+   Rank 3: Testing large tensor all-reduce...
+   Rank 3: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~517.78 GB/s
+   Rank 3: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3324.29 GB/s
+   Rank 3: Testing all-gather...
+   Rank 3: ✅ All-gather passed (0.000s)
+   Rank 3: 🎉 All NCCL tests passed!
+
+🎉 Rank 3: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 5/8, Local Rank: 5
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 5: Starting NCCL tests...
+   Rank 5: Using device cuda:5
+   Rank 5: Initializing process group...
+   Rank 5: ✅ Process group initialized in 0.00s
+   Rank 5: Testing small all-reduce...
+   Rank 5: ✅ Small all-reduce passed (1.327s)
+   Rank 5: Testing broadcast...
+   Rank 5: ✅ Broadcast passed (0.000s)
+   Rank 5: Testing large tensor all-reduce...
+   Rank 5: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~498.64 GB/s
+   Rank 5: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3324.29 GB/s
+   Rank 5: Testing all-gather...
+   Rank 5: ✅ All-gather passed (0.000s)
+   Rank 5: 🎉 All NCCL tests passed!
+
+🎉 Rank 5: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 1/8, Local Rank: 1
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 1: Starting NCCL tests...
+   Rank 1: Using device cuda:1
+   Rank 1: Initializing process group...
+   Rank 1: ✅ Process group initialized in 0.00s
+   Rank 1: Testing small all-reduce...
+   Rank 1: ✅ Small all-reduce passed (1.243s)
+   Rank 1: Testing broadcast...
+   Rank 1: ✅ Broadcast passed (0.000s)
+   Rank 1: Testing large tensor all-reduce...
+   Rank 1: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~523.69 GB/s
+   Rank 1: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3288.54 GB/s
+   Rank 1: Testing all-gather...
+   Rank 1: ✅ All-gather passed (0.000s)
+   Rank 1: 🎉 All NCCL tests passed!
+
+🎉 Rank 1: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 6/8, Local Rank: 6
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 6: Starting NCCL tests...
+   Rank 6: Using device cuda:6
+   Rank 6: Initializing process group...
+   Rank 6: ✅ Process group initialized in 0.00s
+   Rank 6: Testing small all-reduce...
+   Rank 6: ✅ Small all-reduce passed (1.279s)
+   Rank 6: Testing broadcast...
+   Rank 6: ✅ Broadcast passed (0.000s)
+   Rank 6: Testing large tensor all-reduce...
+   Rank 6: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~491.17 GB/s
+   Rank 6: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3515.34 GB/s
+   Rank 6: Testing all-gather...
+   Rank 6: ✅ All-gather passed (0.000s)
+   Rank 6: 🎉 All NCCL tests passed!
+
+🎉 Rank 6: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 2/8, Local Rank: 2
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 2: Starting NCCL tests...
+   Rank 2: Using device cuda:2
+   Rank 2: Initializing process group...
+   Rank 2: ✅ Process group initialized in 0.00s
+   Rank 2: Testing small all-reduce...
+   Rank 2: ✅ Small all-reduce passed (1.299s)
+   Rank 2: Testing broadcast...
+   Rank 2: ✅ Broadcast passed (0.000s)
+   Rank 2: Testing large tensor all-reduce...
+   Rank 2: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~503.02 GB/s
+   Rank 2: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3488.61 GB/s
+   Rank 2: Testing all-gather...
+   Rank 2: ✅ All-gather passed (0.000s)
+   Rank 2: 🎉 All NCCL tests passed!
+
+🎉 Rank 2: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 4/8, Local Rank: 4
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: Not set
+     NCCL_SOCKET_IFNAME: Not set
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 4: Starting NCCL tests...
+   Rank 4: Using device cuda:4
+   Rank 4: Initializing process group...
+   Rank 4: ✅ Process group initialized in 0.00s
+   Rank 4: Testing small all-reduce...
+   Rank 4: ✅ Small all-reduce passed (1.292s)
+   Rank 4: Testing broadcast...
+   Rank 4: ✅ Broadcast passed (0.000s)
+   Rank 4: Testing large tensor all-reduce...
+   Rank 4: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~490.12 GB/s
+   Rank 4: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3436.34 GB/s
+   Rank 4: Testing all-gather...
+   Rank 4: ✅ All-gather passed (0.000s)
+   Rank 4: 🎉 All NCCL tests passed!
+
+🎉 Rank 4: All tests completed successfully!
+
+🧪 Test 2: NCCL without InfiniBand (Ethernet only)
+----------------------------------------
+NCCL Settings:
+  NCCL_IB_DISABLE: 1
+  NCCL_SOCKET_IFNAME: eth0
+
+NCCL version 2.21.5+cuda12.4
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 7/8, Local Rank: 7
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 7: Starting NCCL tests...
+   Rank 7: Using device cuda:7
+   Rank 7: Initializing process group...
+   Rank 7: ✅ Process group initialized in 0.00s
+   Rank 7: Testing small all-reduce...
+   Rank 7: ✅ Small all-reduce passed (0.995s)
+   Rank 7: Testing broadcast...
+   Rank 7: ✅ Broadcast passed (0.000s)
+   Rank 7: Testing large tensor all-reduce...
+   Rank 7: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~514.30 GB/s
+   Rank 7: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3230.65 GB/s
+   Rank 7: Testing all-gather...
+   Rank 7: ✅ All-gather passed (0.000s)
+   Rank 7: 🎉 All NCCL tests passed!
+
+🎉 Rank 7: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 0/8, Local Rank: 0
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 0: Starting NCCL tests...
+   Rank 0: Using device cuda:0
+   Rank 0: Initializing process group...
+   Rank 0: ✅ Process group initialized in 0.44s
+   Rank 0: Testing small all-reduce...
+   Rank 0: ✅ Small all-reduce passed (0.877s)
+   Rank 0: Testing broadcast...
+   Rank 0: ✅ Broadcast passed (0.000s)
+   Rank 0: Testing large tensor all-reduce...
+   Rank 0: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~448.88 GB/s
+   Rank 0: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3265.14 GB/s
+   Rank 0: Testing all-gather...
+   Rank 0: ✅ All-gather passed (0.000s)
+   Rank 0: 🎉 All NCCL tests passed!
+
+🎉 Rank 0: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 5/8, Local Rank: 5
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 5: Starting NCCL tests...
+   Rank 5: Using device cuda:5
+   Rank 5: Initializing process group...
+   Rank 5: ✅ Process group initialized in 0.00s
+   Rank 5: Testing small all-reduce...
+   Rank 5: ✅ Small all-reduce passed (0.970s)
+   Rank 5: Testing broadcast...
+   Rank 5: ✅ Broadcast passed (0.000s)
+   Rank 5: Testing large tensor all-reduce...
+   Rank 5: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~513.15 GB/s
+   Rank 5: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3276.80 GB/s
+   Rank 5: Testing all-gather...
+   Rank 5: ✅ All-gather passed (0.000s)
+   Rank 5: 🎉 All NCCL tests passed!
+
+🎉 Rank 5: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 4/8, Local Rank: 4
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 4: Starting NCCL tests...
+   Rank 4: Using device cuda:4
+   Rank 4: Initializing process group...
+   Rank 4: ✅ Process group initialized in 0.00s
+   Rank 4: Testing small all-reduce...
+   Rank 4: ✅ Small all-reduce passed (0.992s)
+   Rank 4: Testing broadcast...
+   Rank 4: ✅ Broadcast passed (0.000s)
+   Rank 4: Testing large tensor all-reduce...
+   Rank 4: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~416.29 GB/s
+   Rank 4: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3288.54 GB/s
+   Rank 4: Testing all-gather...
+   Rank 4: ✅ All-gather passed (0.000s)
+   Rank 4: 🎉 All NCCL tests passed!
+
+🎉 Rank 4: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 2/8, Local Rank: 2
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 2: Starting NCCL tests...
+   Rank 2: Using device cuda:2
+   Rank 2: Initializing process group...
+   Rank 2: ✅ Process group initialized in 0.00s
+   Rank 2: Testing small all-reduce...
+   Rank 2: ✅ Small all-reduce passed (1.017s)
+   Rank 2: Testing broadcast...
+   Rank 2: ✅ Broadcast passed (0.000s)
+   Rank 2: Testing large tensor all-reduce...
+   Rank 2: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~509.72 GB/s
+   Rank 2: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3423.52 GB/s
+   Rank 2: Testing all-gather...
+   Rank 2: ✅ All-gather passed (0.000s)
+   Rank 2: 🎉 All NCCL tests passed!
+
+🎉 Rank 2: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 6/8, Local Rank: 6
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 6: Starting NCCL tests...
+   Rank 6: Using device cuda:6
+   Rank 6: Initializing process group...
+   Rank 6: ✅ Process group initialized in 0.00s
+   Rank 6: Testing small all-reduce...
+   Rank 6: ✅ Small all-reduce passed (1.073s)
+   Rank 6: Testing broadcast...
+   Rank 6: ✅ Broadcast passed (0.000s)
+   Rank 6: Testing large tensor all-reduce...
+   Rank 6: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~457.84 GB/s
+   Rank 6: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3276.80 GB/s
+   Rank 6: Testing all-gather...
+   Rank 6: ✅ All-gather passed (0.000s)
+   Rank 6: 🎉 All NCCL tests passed!
+
+🎉 Rank 6: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 3/8, Local Rank: 3
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 3: Starting NCCL tests...
+   Rank 3: Using device cuda:3
+   Rank 3: Initializing process group...
+   Rank 3: ✅ Process group initialized in 0.00s
+   Rank 3: Testing small all-reduce...
+   Rank 3: ✅ Small all-reduce passed (0.981s)
+   Rank 3: Testing broadcast...
+   Rank 3: ✅ Broadcast passed (0.000s)
+   Rank 3: Testing large tensor all-reduce...
+   Rank 3: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~516.61 GB/s
+   Rank 3: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3475.39 GB/s
+   Rank 3: Testing all-gather...
+   Rank 3: ✅ All-gather passed (0.000s)
+   Rank 3: 🎉 All NCCL tests passed!
+
+🎉 Rank 3: All tests completed successfully!
+🚀 Simple NCCL Communication Test
+==================================================
+🔍 Environment Info:
+   Hostname: compute-891
+   Rank: 1/8, Local Rank: 1
+   CUDA Available: True
+   GPU Count: 8
+   PyTorch: 2.5.1+cu124
+   NCCL Settings:
+     NCCL_DEBUG: WARN
+     NCCL_IB_DISABLE: 1
+     NCCL_SOCKET_IFNAME: eth0
+     NCCL_TIMEOUT: 300
+     MASTER_ADDR: compute-891
+     MASTER_PORT: 29500
+
+🚀 Rank 1: Starting NCCL tests...
+   Rank 1: Using device cuda:1
+   Rank 1: Initializing process group...
+   Rank 1: ✅ Process group initialized in 0.00s
+   Rank 1: Testing small all-reduce...
+   Rank 1: ✅ Small all-reduce passed (0.995s)
+   Rank 1: Testing broadcast...
+   Rank 1: ✅ Broadcast passed (0.000s)
+   Rank 1: Testing large tensor all-reduce...
+   Rank 1: ✅ Large tensor (1,048,576 elements) all-reduce: 0.000s, ~488.03 GB/s
+   Rank 1: ✅ Large tensor (4,194,304 elements) all-reduce: 0.000s, ~3324.29 GB/s
+   Rank 1: Testing all-gather...
+   Rank 1: ✅ All-gather passed (0.000s)
+   Rank 1: 🎉 All NCCL tests passed!
+
+🎉 Rank 1: All tests completed successfully!
+
+✅ Simple NCCL tests completed!
+End time: Thu Aug  7 18:18:26 UTC 2025

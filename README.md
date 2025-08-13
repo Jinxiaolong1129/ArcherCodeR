@@ -103,6 +103,18 @@ We have currently only provided the script and data to reproduce the results of 
 bash ./scripts/train/run_archer_qwen2.5_1.5b_code.sh
 ```
 
+
+
+python tools/download_datasets.py
+
+bash ./tools/start_ray_single.sh
+
+bash ./scripts/train/run_archer_qwen2.5_1.5b_code_single.sh
+
+
+
+
+
 ### Evaluation
 
 #### Step 1: Convert model format

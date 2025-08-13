@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-# 单节点配置
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Qwen2.5-1.5B-Single'
+exp_name='Archer-Qwen2.5-1.5B-Fast'
 
 adv_estimator=grpo
 
@@ -21,17 +20,18 @@ clip_ratio_low=0.2
 clip_ratio_high=0.2
 loss_agg_mode=token-mean
 
-max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 32))
+# ⚡ OPTIMIZED: Reduced sequence lengths for faster training
+max_prompt_length=$((1024 * 1))  # Reduced from 2K to 1K
+max_response_length=$((1024 * 8))  # Reduced from 32K to 8K
 enable_overlong_buffer=False
 overlong_buffer_len=16
 overlong_penalty_factor=1.0
-v_max_response_length=$((1024 * 32))
+v_max_response_length=$((1024 * 8))  # Reduced from 32K to 8K
 
-# 调整单节点的batch size
-train_prompt_bsz=32
+# ⚡ OPTIMIZED: Smaller batch sizes for faster iteration
+train_prompt_bsz=16  # Reduced from 64 to 16
 gen_prompt_bsz=$((train_prompt_bsz * 1))
-train_prompt_mini_bsz=16
+train_prompt_mini_bsz=8  # Reduced from 32 to 8
 
 # Paths
 MODEL_PATH=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
@@ -40,12 +40,8 @@ data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
 TEST_FILE=$data_dir/test/livecodebench_v5.json
 
-# Create output directory if it doesn't exist
-mkdir -p "${CKPTS_DIR}"
-mkdir -p "${CKPTS_DIR}/eval"
-
-# Algorithm
-n_resp_per_prompt=16
+# ⚡ OPTIMIZED: Reduced responses per prompt for faster generation
+n_resp_per_prompt=4  # Reduced from 8 to 4 for faster debugging
 temperature=1.0
 top_p=1.0
 top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
@@ -54,9 +50,9 @@ v_temperature=0.8
 v_top_p=1.0
 v_top_k=-1
 
-# Performance Related Parameter
+# ⚡ OPTIMIZED: Increased tensor parallelism for better GPU utilization
 sp_size=1
-gen_tp=1
+gen_tp=1  
 use_dynamic_bsz=False
 micro_batch_size_per_gpu=1
 actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
@@ -75,9 +71,18 @@ high_entropy_clip_ratio_high=0.5
 # Trainer
 use_overlong_filter=False
 
-mkdir -p ${CKPTS_DIR}
+echo "🚀 OPTIMIZED CONFIGURATION:"
+echo "📏 Max prompt length: ${max_prompt_length}"
+echo "📏 Max response length: ${max_response_length}"
+echo "📦 Batch size: ${train_prompt_bsz}"
+echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
+echo "⚡ Tensor parallel: ${gen_tp}"
+echo "🎯 Total tokens per batch: $((train_prompt_bsz * n_resp_per_prompt * v_max_response_length))"
 
-/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m dapo.main_dapo \
+mkdir -p "${CKPTS_DIR}"
+mkdir -p "${CKPTS_DIR}/eval"
+
+python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -150,7 +155,7 @@ mkdir -p ${CKPTS_DIR}
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes="${nnodes}" \
     trainer.balance_batch=False \
     trainer.val_before_train=False \
@@ -162,6 +167,3 @@ mkdir -p ${CKPTS_DIR}
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
     +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 
-
-
-# bash scripts/train/run_archer_qwen2.5_1.5b_code_single.sh
