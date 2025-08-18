@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-model_path=../output/grpo/ArcherCodeR/DAPO-Qwen2.5-1.5B/global_step_120/actor
+# 修改为你的实际checkpoint路径
+model_path=./output/ArcherCodeR/Archer-Qwen2.5-3B-2K-8K-16resp/global_step_80/actor
 
 /data/xuandong_zhao/anaconda3/envs/archer/bin/python -m tools.model_merge merge \
     --backend fsdp \

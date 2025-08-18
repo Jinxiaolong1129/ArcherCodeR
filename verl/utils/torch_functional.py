@@ -158,6 +158,22 @@ def entropy_from_logits_with_chunking(logits: torch.Tensor, chunk_size: int = 20
     return entropy
 
 
+def self_certainty_from_logits(logits: torch.Tensor):
+    """Calculate self-certainty from logits.
+    
+    Self-certainty measures how confident the model is about its predictions.
+    Higher values indicate higher confidence.
+    
+    Args:
+        logits (torch.Tensor): Model logits of shape (..., vocab_size)
+        
+    Returns:
+        torch.Tensor: Self-certainty values of shape logits.shape[:-1]
+    """
+    self_certainty = torch.logsumexp(logits, dim=-1) - logits.mean(dim=-1)
+    return self_certainty
+
+
 def masked_sum(values, mask, axis=None):
     """Compute mean of tensor with a masked values."""
     return (values * mask).sum(axis=axis)

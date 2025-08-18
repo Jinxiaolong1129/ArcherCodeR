@@ -202,5 +202,5 @@ flash_attn-2.7.3+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl.1
 flash_attn-2.7.3+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
 output/
 Miniconda3-latest-Linux-x86_64.sh
-
+wandb/
 outputs/

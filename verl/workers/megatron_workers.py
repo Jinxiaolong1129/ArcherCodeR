@@ -456,6 +456,7 @@ class ActorRolloutRefWorker(MegatronWorker):
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     @GPUMemoryLogger(role="generate_sequences", logger=logger)
     def generate_sequences(self, prompts: DataProto):
+        # breakpoint()
         assert self._is_rollout
         if self._is_offload_param:
             load_megatron_model_to_gpu(self.actor_module)

@@ -105,6 +105,10 @@ class WizardRewardManager:
         """
         verify the batch and save as ``acc`` tensor
         """
+        import time
+        print(f"        🔍 Starting verification phase...")
+        verify_start_time = time.time()
+        
         # batched scoring
         prompt_ids = data.batch['prompts']
 
@@ -115,8 +119,11 @@ class WizardRewardManager:
         extra_info = data.non_tensor_batch.get('extra_info', None)
 
         assert len(sequences_str) == len(ground_truth) == len(data_sources)
+        print(f"        📝 Decoded {len(sequences_str)} responses for scoring")
 
         try:
+            print(f"        ⚙️  Starting parallel compute score...")
+            score_start_time = time.time()
             scores = parallel_compute_score(
                     self.compute_score,
                     sequences_str,
@@ -127,19 +134,27 @@ class WizardRewardManager:
                     is_eval=is_eval
                 )
             assert len(scores) == len(sequences_str)
+            print(f"        ✅ Parallel compute score completed in {time.time() - score_start_time:.2f}s")
 
         except Exception as e:
-            print(f"Unexpected error in batched reward computing. Setting all as 0.: {e}")
+            print(f"        ❌ Unexpected error in batched reward computing. Setting all as 0.: {e}")
             scores = [0. for _ in range(len(sequences_str))]
 
-        # data.batch['acc'] = torch.tensor(scores, dtype=torch.float32, device=prompt_ids.device)
+        print(f"        ✅ Verification completed in {time.time() - verify_start_time:.2f}s")
         return scores
 
     def calculate_thinking_tokens(self, data):
+        import time
+        print(f"        🧠 Starting thinking tokens calculation...")
+        thinking_start_time = time.time()
+        
         response_ids = data.batch['responses']
         sequences_str = self.tokenizer.batch_decode(response_ids, skip_special_tokens=True)
         frequency_thinking_tokens = defaultdict(list)
-        for sequence in sequences_str:
+        
+        print(f"        🔤 Processing {len(sequences_str)} sequences for thinking tokens...")
+        
+        for idx, sequence in enumerate(sequences_str):
             tokens = normalize_and_tokenize(sequence)
             counts = Counter(tokens)
             frequency_thinking_tokens['token/thinking_and_reasoning'].append(sum(counts[term] for term in thinking_and_reasoning))
@@ -150,9 +165,14 @@ class WizardRewardManager:
             frequency_thinking_tokens['token/concepts_and_theories'].append(sum(counts[term] for term in concepts_and_theories))
             frequency_thinking_tokens['token/logical_connectives'].append(sum(counts[term] for term in logical_connectives))
 
+        print(f"        ✅ Thinking tokens calculation completed in {time.time() - thinking_start_time:.2f}s")
         return frequency_thinking_tokens
 
     def get_repetition_ratio(self, data):
+        import time
+        print(f"        🔁 Starting repetition ratio calculation...")
+        repetition_start_time = time.time()
+        
         response_ids = data.batch['responses']
         sequences_str = self.tokenizer.batch_decode(response_ids, skip_special_tokens=True)
         repetition_ratios = []
@@ -160,7 +180,12 @@ class WizardRewardManager:
         batch_ngrams_counts = defaultdict(int)
         ngram_size = 20
 
+        print(f"        📊 Processing {len(sequences_str)} sequences for repetition detection (ngram_size={ngram_size})...")
+
         for idx, sequence in enumerate(sequences_str):
+            if idx % 10 == 0 and idx > 0:
+                print(f"        📈 Processed {idx}/{len(sequences_str)} sequences for repetition...")
+                
             ngrams_counts = defaultdict(int)
             ngrams = zipngram(sequence, ngram_size)
             total_ngrams = len(ngrams)
@@ -185,20 +210,26 @@ class WizardRewardManager:
             repetition_ratios.append(repeated_count / total_ngrams)
             most_repeated.append(sorted(ngrams_counts.items(), key=lambda x: x[1], reverse=True)[0][1]) 
 
+        print(f"        🔍 Analyzing batch-wide repetition patterns...")
         if batch_ngrams_counts:
             batch_most_repeated = sorted(batch_ngrams_counts.items(), key=lambda x: x[1], reverse=True)[:3]
             for i, (ngram, count) in enumerate(batch_most_repeated):
                 print(f"Batch Top-{i+1} Frequency: {count}")
                 print(f"N-gram: {' '.join(ngram)}")
 
+        print(f"        ✅ Repetition ratio calculation completed in {time.time() - repetition_start_time:.2f}s")
         return defaultdict(list, {'token/maximum_frequency': most_repeated, 'token/repetition_ratio': repetition_ratios})
 
 
     def __call__(self, data: DataProto, return_dict: bool = False, is_eval: bool = False):
         """We will expand this function gradually based on the available datasets"""
+        import time
+        print(f"      🧙 Wizard Reward Manager called with {len(data)} samples")
+        wizard_start_time = time.time()
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if "rm_scores" in data.batch.keys():
+            print(f"      ⚡ Using existing rm_scores, skipping computation")
             if return_dict:
                 return {"reward_tensor": data.batch["rm_scores"]}
             else:
@@ -210,15 +241,19 @@ class WizardRewardManager:
         # batched scoring
         prompt_length = data.batch['prompts'].shape[-1]
         valid_response_length = data.batch['attention_mask'][:, prompt_length:].sum(dim=-1)
+        
+        print(f"      📏 Response length stats: avg={valid_response_length.float().mean():.1f}, max={valid_response_length.max()}, min={valid_response_length.min()}")
+        
         scores = self.verify(data, is_eval)
         thinking_tokens_info = self.calculate_thinking_tokens(data)
         repetition_info = self.get_repetition_ratio(data)
 
+        print(f"      💰 Processing individual rewards...")
         for i in range(len(data)):
             reward_extra_info["acc"].append(float(scores[i]))
             reward = scores[i]
 
-            if self.overlong_buffer_cfg.enable:
+            if self.overlong_buffer_cfg and self.overlong_buffer_cfg.enable:
                 overlong_buffer_len = self.overlong_buffer_cfg.len
                 expected_len = self.max_resp_len - overlong_buffer_len
                 exceed_len = valid_response_length[i] - expected_len
@@ -232,6 +267,9 @@ class WizardRewardManager:
             reward_tensor[i, valid_response_length[i].item() - 1] = reward
 
         response_length_info = {"response_length": valid_response_length.cpu().tolist()}
+
+        print(f"      ✅ Wizard Reward Manager completed in {time.time() - wizard_start_time:.2f}s")
+        print(f"      📊 Final reward stats: avg={reward_tensor.sum(-1).mean():.3f}, positive_rewards={torch.sum(reward_tensor.sum(-1) > 0).item()}/{len(data)}")
 
         if return_dict:
             return {

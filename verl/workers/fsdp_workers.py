@@ -163,6 +163,16 @@ class ActorRolloutRefWorker(Worker):
             self.config.ref.log_prob_micro_batch_size //= self.device_mesh.size() // self.ulysses_sequence_parallel_size
             self.config.ref.log_prob_micro_batch_size_per_gpu = self.config.ref.log_prob_micro_batch_size
 
+        self._upstream_actor = None
+        self.ref_forward_step = 0
+        if self._is_ref:
+            self.sync_ref_model = self.config.ref.sync_ref_model
+            self.ref_model_sync_steps = self.config.ref.ref_model_sync_steps
+            self.ref_model_mixup_alpha = self.config.ref.ref_model_mixup_alpha
+            if self.sync_ref_model:
+                assert self.ref_model_sync_steps > 0
+                assert self.ref_model_mixup_alpha > 0.0 and self.ref_model_mixup_alpha <= 1.0
+
     def _build_model_optimizer(
         self,
         model_path,
@@ -628,6 +638,7 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences(self, prompts: DataProto):
+        # breakpoint()
         # Support all hardwares
         prompts = prompts.to(get_device_id())
 
@@ -684,10 +695,14 @@ class ActorRolloutRefWorker(Worker):
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
             with adapter_ctx:
-                output, entropys = self.actor.compute_log_prob(data=data, calculate_entropy=True)
+                output, entropys, self_certaintys = self.actor.compute_log_prob(
+                    data=data, 
+                    calculate_entropy=True, 
+                    calculate_self_certainty=True
+                )
 
             output = DataProto.from_dict(
-                tensors={"old_log_probs": output, "entropys": entropys},
+                tensors={"old_log_probs": output, "entropys": entropys, "self_certaintys": self_certaintys},
                 meta_info={"temperature": self.config.rollout.temperature},
             )
             output = self.ulysses_sharding_manager.postprocess_data(output)
@@ -715,6 +730,21 @@ class ActorRolloutRefWorker(Worker):
             data = DataProto.from_dict(tensors={"ref_log_prob": data.batch["old_log_probs"]})
             return data
         assert self._is_ref
+
+        if self.sync_ref_model:
+            assert self._upstream_actor is not None
+
+        if (
+            self.sync_ref_model and
+            self.ref_forward_step > 0 and
+            self.ref_forward_step % self.ref_model_sync_steps == 0
+        ):
+            alpha = self.ref_model_mixup_alpha
+            for target_param, copy_param in zip(self.ref_policy.actor_module.parameters(), self._upstream_actor.parameters()):
+                device_param = copy_param.data.to(target_param.device)
+                target_param.data.mul_(1.0 - alpha).add_(device_param, alpha=alpha)
+            torch.distributed.barrier()
+
         # else:
         # otherwise, the class have a standalone ref model
         # Support all hardwares
@@ -738,7 +768,22 @@ class ActorRolloutRefWorker(Worker):
         if self.world_size > 1 and fsdp_version(self.ref_policy.actor_module) == 1:
             self.ref_policy.actor_module._handle.reshard(True)
 
+        self.ref_forward_step += 1
         return output
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def get_actor_module(self):
+        return self.rank, id(self.actor_module_fsdp)
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def ref_bind_actors(self, rank_id_tuples):
+        assert self._is_ref
+        import ctypes
+        for rank, id_actor_module in rank_id_tuples:
+            if rank == self.rank:
+                module = ctypes.cast(id_actor_module, ctypes.py_object).value
+                self._upstream_actor = module
+        assert self._upstream_actor is not None
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, max_ckpt_to_keep=None):

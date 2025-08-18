@@ -86,6 +86,7 @@ class AdvantageEstimator(str, Enum):
     RLOO = "rloo"
     OPO = "opo"
     GRPO_PASSK = "grpo_passk"
+    INTUITOR = "intuitor"
 
 
 class AdaptiveKLController:
@@ -229,6 +230,79 @@ def compute_grpo_outcome_advantage(
 
     return scores, scores
 
+
+@register_adv_est(AdvantageEstimator.INTUITOR)
+def compute_intuitor_advantage(
+    self_certaintys: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+):
+    """
+    Compute advantage for Intuitor algorithm using self-certainty as reward signal.
+    
+    Intuitor uses the model's self-certainty (confidence in its own predictions) 
+    as an intrinsic reward signal, eliminating the need for external reward models.
+    
+    Args:
+        self_certaintys: `(torch.Tensor)`
+            Token-level self-certainty values, shape (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            Mask for response tokens, shape (bs, response_length)
+        index: `(np.ndarray)`
+            Unique identifiers for grouping responses from same prompt
+        epsilon: `(float)`
+            Small constant to avoid division by zero
+        norm_adv_by_std_in_grpo: `(bool)`
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: `(torch.Tensor)`
+            Computed advantages, shape (bs, response_length)
+        returns: `(torch.Tensor)`
+            Computed returns (same as advantages for outcome-based methods), shape (bs, response_length)
+    """
+    # Convert response_mask to float for proper division
+    response_mask_float = response_mask.float()
+    
+    # Compute sentence-wise mean self-certainty
+    # Multiply by response_mask to zero out non-response tokens
+    masked_certainty = self_certaintys * response_mask_float  # [B, T]
+    sum_certainty = masked_certainty.sum(dim=-1)  # [B]
+    count = response_mask_float.sum(dim=-1) + epsilon  # avoid divide-by-zero; [B]
+    sentence_wise_certainty = sum_certainty / count  # [B]
+    
+    # Use sentence-wise certainty as scores for GRPO-style advantage computation
+    scores = sentence_wise_certainty
+    
+    id2score = defaultdict(list)
+    id2mean = {}
+    id2std = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+
+    return advantages, advantages
 
 
 @register_adv_est(AdvantageEstimator.GRPO_PASSK)  # or simply: @register_adv_est("grpo_passk")

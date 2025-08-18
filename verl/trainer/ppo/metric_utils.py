@@ -155,6 +155,17 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
             if use_critic
             else {}
         ),
+        # self-certainty metrics (for INTUITOR algorithm)
+        **(
+            {
+                "intuitor/self_certainty/mean": torch.mean(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+                "intuitor/self_certainty/max": torch.max(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+                "intuitor/self_certainty/min": torch.min(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+                "intuitor/self_certainty/std": torch.std(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+            }
+            if "self_certaintys" in batch.batch
+            else {}
+        ),
         # response length
         "response_length/mean": torch.mean(response_length).detach().item(),
         "response_length/max": torch.max(response_length).detach().item(),

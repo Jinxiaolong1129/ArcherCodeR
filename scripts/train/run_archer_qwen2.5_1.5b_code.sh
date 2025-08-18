@@ -32,7 +32,7 @@ gen_prompt_bsz=$((train_prompt_bsz * 1))
 train_prompt_mini_bsz=32
 
 # Paths
-MODEL_PATH=./models/DeepSeek-R1-Distill-Qwen-1.5B
+MODEL_PATH=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
 CKPTS_DIR=./output/${project_name}/${exp_name}
 data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json

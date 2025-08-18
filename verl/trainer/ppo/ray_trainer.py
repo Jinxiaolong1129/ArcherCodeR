@@ -27,6 +27,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pprint import pprint
 from typing import Optional, Type
+import time
+import datetime
+import logging
 
 import numpy as np
 import ray
@@ -60,6 +63,10 @@ from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 
 WorkerType = Type[Worker]
+
+# 设置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class Role(Enum):
@@ -256,21 +263,54 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         data.batch["returns"] = returns
     else:
         # handle all other adv estimator type other than GAE and GRPO
-        adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
-        adv_kwargs = {
-            "token_level_rewards": data.batch["token_level_rewards"],
-            "response_mask": data.batch["response_mask"],
-            "config": config,
-        }
-        if "uid" in data.non_tensor_batch:  # optional
-            adv_kwargs["index"] = data.non_tensor_batch["uid"]
-        if "reward_baselines" in data.batch:  # optional
-            adv_kwargs["reward_baselines"] = data.batch["reward_baselines"]
+        if adv_estimator == AdvantageEstimator.INTUITOR:
+            # Get the token-level self-certainty and response mask
+            self_certaintys = data.batch["self_certaintys"]          # shape: [B, T]
+            response_mask = data.batch["response_mask"].float()      # shape: [B, T], convert to float for correct division
 
-        # calculate advantage estimator
-        advantages, returns = adv_estimator_fn(**adv_kwargs)
-        data.batch["advantages"] = advantages
-        data.batch["returns"] = returns
+            # Compute sentence-wise mean self-certainty
+            # Multiply by response_mask to zero out non-response tokens
+            masked_certainty = self_certaintys * response_mask       # [B, T]
+            sum_certainty = masked_certainty.sum(dim=-1)             # [B]
+            count = response_mask.sum(dim=-1) + 1e-8                 # avoid divide-by-zero; [B]
+            sentence_wise_mean = sum_certainty / count               # [B]
+            # Broadcast sentence-level scores back to token-level shape for compatibility
+            token_level_rewards = sentence_wise_mean.unsqueeze(1).expand_as(self_certaintys)  # [B, T]
+
+            print('-------------------------------- This is Intuitor --------------------------------')
+            print(f"data.batch['self_certaintys'].shape: {data.batch['self_certaintys'].shape}")
+            print(f"data.batch['self_certaintys']: {data.batch['self_certaintys']}")
+            print(f"data.batch['response_mask']: {data.batch['response_mask']}")
+            print(f"sentence_wise_mean: {sentence_wise_mean}")
+            print(f"sentence_wise_mean.shape: {sentence_wise_mean.shape}")
+            print(f"token_level_rewards: {token_level_rewards}")
+            print('-------------------------------- End of Intuitor --------------------------------')
+
+            # Use this in the GRPO advantage computation
+            advantages, returns = core_algos.compute_grpo_outcome_advantage(
+                token_level_rewards=token_level_rewards,
+                response_mask=response_mask,
+                index=data.non_tensor_batch["uid"],
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            )
+            data.batch["advantages"] = advantages
+            data.batch["returns"] = returns
+        else:
+            adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
+            
+            adv_kwargs = {
+                "token_level_rewards": data.batch["token_level_rewards"],
+                "response_mask": data.batch["response_mask"],
+                "config": config,
+            }
+            if "uid" in data.non_tensor_batch:
+                adv_kwargs["index"] = data.non_tensor_batch["uid"]
+            if norm_adv_by_std_in_grpo is not None:
+                adv_kwargs["norm_adv_by_std_in_grpo"] = norm_adv_by_std_in_grpo
+
+            advantages, returns = adv_estimator_fn(**adv_kwargs)
+            data.batch["advantages"] = advantages
+            data.batch["returns"] = returns
     return data
 
 
@@ -337,6 +377,7 @@ class RayPPOTrainer:
             AdvantageEstimator.RLOO,
             AdvantageEstimator.OPO,
             AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE,
+            AdvantageEstimator.INTUITOR,
         ]:
             self.use_critic = False
         else:
@@ -937,6 +978,11 @@ class RayPPOTrainer:
         to construct the PPO dataflow.
         The light-weight advantage computation is done on the driver process.
         """
+        # 立即输出，确认代码执行
+        print("=" * 80)
+        print("🚀 RAY TRAINER FIT METHOD STARTED!")
+        print("=" * 80)
+        
         from omegaconf import OmegaConf
 
         from verl.utils.tracking import Tracking
@@ -949,20 +995,32 @@ class RayPPOTrainer:
         )
 
         self.global_steps = 0
+        
+        print(f"🔧 Initial global_steps: {self.global_steps}")
 
         # load checkpoint before doing anything
+        print("📂 Loading checkpoint...")
         self._load_checkpoint()
+        print(f"✅ Checkpoint loaded, global_steps now: {self.global_steps}")
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
+            print("🧪 Starting initial validation...")
             val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
-            pprint(f"Initial validation metrics: {val_metrics}")
+            
+            # 使用logger记录关键信息，pprint展示详细结构
+            logger.info("Initial validation completed")
+            print("📊 Initial validation metrics:")
+            pprint(val_metrics)
+            
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):
+                print("🛑 Validation only mode, exiting...")
                 return
 
+        print("🎯 Starting main training loop setup...")
         # add tqdm
         progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
 
@@ -970,11 +1028,91 @@ class RayPPOTrainer:
         self.global_steps += 1
         last_val_metrics = None
 
+        # Bind actors for reference model synchronization
+        if self.use_reference_policy:
+            rank_id_tuples = self.actor_rollout_wg.get_actor_module()
+            self.ref_policy_wg.ref_bind_actors(rank_id_tuples)
+
+        # 计算数据集信息
+        train_dataset_size = len(self.train_dataloader.dataset) if hasattr(self.train_dataloader.dataset, '__len__') else "Unknown"
+        train_dataloader_size = len(self.train_dataloader)
+        actual_batch_size = self.config.data.train_batch_size
+        
+        print("=" * 80)
+        print("🚀 STARTING TRAINING LOOP")
+        print("=" * 80)
+        logger.info(f"🚀 Starting training loop")
+        logger.info(f"📊 Dataset info: {train_dataset_size} samples, {train_dataloader_size} batches")
+        logger.info(f"📦 Batch size: {actual_batch_size}, Total epochs: {self.config.trainer.total_epochs}")
+        logger.info(f"🎯 Total training steps: {self.total_training_steps}")
+        
+        print(f"📊 Dataset info: {train_dataset_size} samples, {train_dataloader_size} batches")
+        print(f"📦 Batch size: {actual_batch_size}, Total epochs: {self.config.trainer.total_epochs}")
+        print(f"🎯 Total training steps: {self.total_training_steps}")
+        
+        # 用于追踪整体进度
+        total_samples_processed = 0
+
         for epoch in range(self.config.trainer.total_epochs):
+            epoch_start_time = time.time()
+            print("=" * 60)
+            print(f"📚 EPOCH {epoch + 1}/{self.config.trainer.total_epochs} STARTED")
+            print("=" * 60)
+            logger.info(f"📚 ==================== Epoch {epoch + 1}/{self.config.trainer.total_epochs} ====================")
+            logger.info(f"📈 Epoch progress will process {train_dataloader_size} batches ({train_dataloader_size * actual_batch_size} samples)")
+            
+            # Epoch内的进度追踪
+            epoch_samples_processed = 0
+            batch_count = 0
+            
             for batch_dict in self.train_dataloader:
+                batch_count += 1
+                step_start_time = time.time()
+                
+                print(f"💫 PROCESSING BATCH {batch_count}/{train_dataloader_size} (Step {self.global_steps})")
+                
+                # 详细的进度信息
+                epoch_progress = (batch_count / train_dataloader_size) * 100
+                overall_progress = (self.global_steps / self.total_training_steps) * 100
+                samples_in_this_batch = len(batch_dict['input_ids'])
+                epoch_samples_processed += samples_in_this_batch
+                total_samples_processed += samples_in_this_batch
+                
+                # 时间预估
+                if self.global_steps > 1:
+                    avg_time_per_step = (time.time() - epoch_start_time + timing_raw.get('step', 0)) / batch_count if batch_count > 0 else 54.22
+                    remaining_steps = self.total_training_steps - self.global_steps
+                    eta_minutes = (remaining_steps * avg_time_per_step) / 60
+                else:
+                    eta_minutes = ((self.total_training_steps - self.global_steps) * 54.22) / 60
+                
+                print(f"⚡ Step {self.global_steps}/{self.total_training_steps}")
+                print(f"📍 Epoch {epoch + 1}: Batch {batch_count}/{train_dataloader_size} ({epoch_progress:.1f}%)")
+                print(f"📊 Samples: {samples_in_this_batch} this batch, {epoch_samples_processed}/{train_dataloader_size * actual_batch_size} this epoch, {total_samples_processed} total")
+                print(f"⏰ ETA: {eta_minutes:.1f} minutes ({eta_minutes/60:.1f} hours)")
+                
+                logger.info(f"⚡ Step {self.global_steps}/{self.total_training_steps}")
+                logger.info(f"📍 Epoch {epoch + 1}: Batch {batch_count}/{train_dataloader_size} ({epoch_progress:.1f}%)")
+                logger.info(f"📊 Samples: {samples_in_this_batch} this batch, {epoch_samples_processed}/{train_dataloader_size * actual_batch_size} this epoch, {total_samples_processed} total")
+                logger.info(f"⏰ ETA: {eta_minutes:.1f} minutes ({eta_minutes/60:.1f} hours)")
+                
                 metrics = {}
                 timing_raw = {}
+                
+                # 数据加载阶段
+                data_load_start = time.time()
+                print(f"   📦 Loading batch data...")
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
+                data_load_time = time.time() - data_load_start
+                print(f"   ✅ Batch loaded: {len(batch)} samples in {data_load_time:.2f}s")
+                logger.info(f"   📦 Batch loaded: {len(batch)} samples in {data_load_time:.2f}s")
+                
+                # 内存使用情况
+                if torch.cuda.is_available():
+                    memory_allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+                    memory_reserved = torch.cuda.memory_reserved() / 1024**3   # GB
+                    print(f"   💾 GPU Memory: {memory_allocated:.2f}GB allocated, {memory_reserved:.2f}GB reserved")
+                    logger.debug(f"   💾 GPU Memory: {memory_allocated:.2f}GB allocated, {memory_reserved:.2f}GB reserved")
 
                 # pop those keys for generation
                 batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
@@ -993,18 +1131,36 @@ class RayPPOTrainer:
                 is_last_step = self.global_steps >= self.total_training_steps
 
                 with _timer("step", timing_raw):
+                    # === 生成阶段 ===
+                    gen_start_time = time.time()
+                    print(f"   🎲 Starting generation phase...")
+                    print(f"      🔄 Generating {self.config.actor_rollout_ref.rollout.n} responses per prompt (total: {len(gen_batch) * self.config.actor_rollout_ref.rollout.n} responses)...")
+                    logger.info(f"   🎲 Starting generation phase...")
+                    logger.info(f"      🔄 Generating {self.config.actor_rollout_ref.rollout.n} responses per prompt (total: {len(gen_batch) * self.config.actor_rollout_ref.rollout.n} responses)...")
+                    
                     # generate a batch
                     with _timer("gen", timing_raw):
-                        if not self.async_rollout_mode:
-                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
-                        else:
-                            self.async_rollout_manager.wake_up()
-                            gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
-                            self.async_rollout_manager.sleep()
-                        timing_raw.update(gen_batch_output.meta_info["timing"])
-                        gen_batch_output.meta_info.pop("timing", None)
+                        try:
+                            if not self.async_rollout_mode:
+                                gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                            else:
+                                self.async_rollout_manager.wake_up()
+                                gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
+                                self.async_rollout_manager.sleep()
+                            timing_raw.update(gen_batch_output.meta_info["timing"])
+                            gen_batch_output.meta_info.pop("timing", None)
+                            gen_time = time.time() - gen_start_time
+                            print(f"   ✅ Generation completed in {gen_time:.2f}s ({gen_time/len(gen_batch):.2f}s per prompt)")
+                            logger.info(f"   ✅ Generation completed in {gen_time:.2f}s ({gen_time/len(gen_batch):.2f}s per prompt)")
+                        except Exception as e:
+                            print(f"   ❌ Generation failed: {e}")
+                            logger.error(f"   ❌ Generation failed: {e}")
+                            raise
 
+                    # REMAX baseline (如果启用)
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
+                        remax_start_time = time.time()
+                        logger.info(f"   🔄 Computing REMAX baseline...")
                         with _timer("gen_max", timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
                             gen_baseline_batch.meta_info["do_sample"] = False
@@ -1019,11 +1175,17 @@ class RayPPOTrainer:
                             batch.batch["reward_baselines"] = reward_baseline_tensor
 
                             del gen_baseline_batch, gen_baseline_output
+                        remax_time = time.time() - remax_start_time
+                        logger.info(f"   ✅ REMAX baseline computed in {remax_time:.2f}s")
 
+                    # 批次数据合并
+                    merge_start_time = time.time()
                     batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
                     # repeat to align with repeated responses in rollout
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
+                    merge_time = time.time() - merge_start_time
+                    logger.debug(f"   🔗 Batch merging completed in {merge_time:.2f}s, final batch size: {len(batch)}")
 
                     batch.batch["response_mask"] = compute_response_mask(batch)
                     # Balance the number of valid tokens across DP ranks.
@@ -1032,23 +1194,49 @@ class RayPPOTrainer:
                     # but might affect the loss calculation (due to the change of mini-batching).
                     # TODO: Decouple the DP balancing and mini-batching.
                     if self.config.trainer.balance_batch:
+                        balance_start_time = time.time()
+                        logger.debug(f"   ⚖️  Balancing batch across DP ranks...")
                         self._balance_batch(batch, metrics=metrics)
+                        balance_time = time.time() - balance_start_time
+                        logger.debug(f"   ✅ Batch balanced in {balance_time:.2f}s")
 
                     # compute global_valid tokens
                     batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
 
+                    # === 奖励计算阶段 ===
+                    reward_start_time = time.time()
+                    logger.info(f"   🏆 Starting reward computation phase...")
+                    logger.info(f"      📊 Computing rewards for {len(batch)} samples...")
+                    
                     with _timer("reward", timing_raw):
                         # compute reward model score
                         if self.use_rm:
-                            reward_tensor = self.rm_wg.compute_rm_score(batch)
-                            batch = batch.union(reward_tensor)
+                            rm_start_time = time.time()
+                            logger.info(f"      🤖 Computing reward model scores...")
+                            try:
+                                reward_tensor = self.rm_wg.compute_rm_score(batch)
+                                batch = batch.union(reward_tensor)
+                                rm_time = time.time() - rm_start_time
+                                logger.info(f"      ✅ Reward model scores computed in {rm_time:.2f}s ({rm_time/len(batch)*1000:.1f}ms per sample)")
+                            except Exception as e:
+                                logger.error(f"      ❌ Reward model computation failed: {e}")
+                                raise
 
                         if self.config.reward_model.launch_reward_fn_async:
                             future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer)
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
+                    reward_total_time = time.time() - reward_start_time
+                    logger.info(f"   ✅ Reward computation completed in {reward_total_time:.2f}s")
+
+                    # === 模型更新阶段 ===
+                    update_start_time = time.time()
+                    logger.info(f"   🔄 Starting model update phase...")
+
                     # recompute old_log_probs
+                    old_logprob_start_time = time.time()
+                    logger.debug(f"      📊 Computing old log probabilities...")
                     with _timer("old_log_prob", timing_raw):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                         entropys = old_log_prob.batch["entropys"]
@@ -1083,8 +1271,13 @@ class RayPPOTrainer:
                                     "training/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
                                 }
                             )
+                    old_logprob_time = time.time() - old_logprob_start_time
+                    logger.debug(f"      ✅ Old log probabilities computed in {old_logprob_time:.2f}s")
 
+                    # Reference policy
                     if self.use_reference_policy:
+                        ref_start_time = time.time()
+                        logger.debug(f"      🔗 Computing reference log probabilities...")
                         # compute reference log_prob
                         with _timer("ref", timing_raw):
                             if not self.ref_in_actor:
@@ -1092,13 +1285,22 @@ class RayPPOTrainer:
                             else:
                                 ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
+                        ref_time = time.time() - ref_start_time
+                        logger.debug(f"      ✅ Reference log probabilities computed in {ref_time:.2f}s")
 
                     # compute values
                     if self.use_critic:
+                        values_start_time = time.time()
+                        logger.debug(f"      💰 Computing values...")
                         with _timer("values", timing_raw):
                             values = self.critic_wg.compute_values(batch)
                             batch = batch.union(values)
+                        values_time = time.time() - values_start_time
+                        logger.debug(f"      ✅ Values computed in {values_time:.2f}s")
 
+                    # Advantages计算
+                    adv_start_time = time.time()
+                    logger.debug(f"      🎯 Computing advantages...")
                     with _timer("adv", timing_raw):
                         # we combine with rule-based rm
                         reward_extra_infos_dict: dict[str, list]
@@ -1130,22 +1332,51 @@ class RayPPOTrainer:
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                             config=self.config.algorithm,
                         )
+                    adv_time = time.time() - adv_start_time
+                    logger.debug(f"      ✅ Advantages computed in {adv_time:.2f}s")
 
+                    # === 关键的训练更新部分 ===
                     # update critic
                     if self.use_critic:
+                        critic_update_start = time.time()
+                        logger.info(f"      🎓 Updating critic network...")
                         with _timer("update_critic", timing_raw):
                             critic_output = self.critic_wg.update_critic(batch)
                         critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
                         metrics.update(critic_output_metrics)
+                        critic_update_time = time.time() - critic_update_start
+                        logger.info(f"      ✅ Critic updated in {critic_update_time:.2f}s")
+                        
+                        # 记录critic的关键指标
+                        if 'critic/loss' in critic_output_metrics:
+                            logger.info(f"         📉 Critic loss: {critic_output_metrics['critic/loss']:.4f}")
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
+                        actor_update_start = time.time()
+                        logger.info(f"      🎭 Updating actor network (main training update)...")
                         with _timer("update_actor", timing_raw):
                             batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
+                        actor_update_time = time.time() - actor_update_start
+                        logger.info(f"      ✅ Actor updated in {actor_update_time:.2f}s")
+                        
+                        # 记录actor的关键指标
+                        if 'actor/loss' in actor_output_metrics:
+                            logger.info(f"         📉 Actor loss: {actor_output_metrics['actor/loss']:.4f}")
+                        if 'actor/lr' in actor_output_metrics:
+                            logger.info(f"         📈 Learning rate: {actor_output_metrics['actor/lr']:.6f}")
+                        if 'actor/entropy' in actor_output_metrics:
+                            logger.info(f"         🎲 Entropy: {actor_output_metrics['actor/entropy']:.4f}")
+                    else:
+                        remaining_warmup = self.config.trainer.critic_warmup - self.global_steps
+                        logger.info(f"      ⏳ Critic warmup phase: {self.global_steps}/{self.config.trainer.critic_warmup} (remaining: {remaining_warmup} steps)")
+
+                    update_total_time = time.time() - update_start_time
+                    logger.info(f"   ✅ Model update completed in {update_total_time:.2f}s")
 
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
@@ -1165,16 +1396,27 @@ class RayPPOTrainer:
 
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
+                        val_start_time = time.time()
+                        logger.info(f"   🧪 Running validation...")
                         with _timer("testing", timing_raw):
                             val_metrics: dict = self._validate()
                             if is_last_step:
                                 last_val_metrics = val_metrics
                         metrics.update(val_metrics)
+                        val_time = time.time() - val_start_time
+                        logger.info(f"   ✅ Validation completed in {val_time:.2f}s")
 
+                    # 检查点保存
                     if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
+                        save_start_time = time.time()
+                        logger.info(f"   💾 Saving checkpoint at step {self.global_steps}...")
                         with _timer("save_checkpoint", timing_raw):
                             self._save_checkpoint()
+                        save_time = time.time() - save_start_time
+                        logger.info(f"   ✅ Checkpoint saved in {save_time:.2f}s")
 
+                # 指标收集
+                metrics_start_time = time.time()
                 # training metrics
                 metrics.update(
                     {
@@ -1188,6 +1430,18 @@ class RayPPOTrainer:
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
                 metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
+                metrics_time = time.time() - metrics_start_time
+                logger.debug(f"   📊 Metrics computed in {metrics_time:.2f}s")
+
+                # 步骤总结
+                step_total_time = time.time() - step_start_time
+                samples_per_second = samples_in_this_batch / step_total_time
+                estimated_total_time = step_total_time * (self.total_training_steps - self.global_steps + 1)
+                
+                logger.info(f"✅ Step {self.global_steps} completed in {step_total_time:.2f}s")
+                logger.info(f"📈 Overall progress: {self.global_steps}/{self.total_training_steps} ({overall_progress:.1f}%)")
+                logger.info(f"⚡ Processing speed: {samples_per_second:.2f} samples/second")
+                logger.info(f"⏱️  Estimated remaining time: {estimated_total_time/3600:.1f} hours")
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
@@ -1195,6 +1449,17 @@ class RayPPOTrainer:
                 progress_bar.update(1)
                 self.global_steps += 1
                 if is_last_step:
-                    pprint(f"Final validation metrics: {last_val_metrics}")
+                    logger.info("🎉 Training completed successfully!")
+                    print("📊 Final validation metrics:")
+                    pprint(last_val_metrics)
                     progress_bar.close()
                     return
+                    
+            epoch_total_time = time.time() - epoch_start_time
+            epoch_samples_per_second = epoch_samples_processed / epoch_total_time
+            logger.info(f"📚 ==================== Epoch {epoch + 1} Summary ====================")
+            logger.info(f"⏱️  Epoch completed in {epoch_total_time/60:.1f} minutes")
+            logger.info(f"📊 Processed {epoch_samples_processed} samples")
+            logger.info(f"⚡ Average speed: {epoch_samples_per_second:.2f} samples/second")
+            logger.info(f"📈 Completed {batch_count}/{train_dataloader_size} batches")
+            logger.info(f"==================================================================")

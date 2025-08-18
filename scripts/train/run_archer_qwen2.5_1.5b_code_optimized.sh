@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
+# 🔧 FIX: Clear conflicting environment variables
+unset ROCR_VISIBLE_DEVICES 2>/dev/null || true
+unset HIP_VISIBLE_DEVICES 2>/dev/null || true
+# Keep CUDA_VISIBLE_DEVICES if needed, or unset if you want to use all GPUs
+# unset CUDA_VISIBLE_DEVICES 2>/dev/null || true
+
+echo "🧹 Cleared conflicting GPU environment variables"
+echo "Current GPU env vars:"
+env | grep -E "(CUDA|ROCR|HIP)_VISIBLE_DEVICES" || echo "No GPU env vars set"
+
+export HF_TOKEN=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
+export WANDB_API_KEY=5c271ef60b4c4753def92be733cf80487f0c7e78
+
 nnodes=1
 
 project_name='ArcherCodeR'
@@ -52,7 +65,7 @@ v_top_k=-1
 
 # ⚡ OPTIMIZED: Increased tensor parallelism for better GPU utilization
 sp_size=1
-gen_tp=1  
+gen_tp=2  # Increased from 1 to 2 for better GPU utilization
 use_dynamic_bsz=False
 micro_batch_size_per_gpu=1
 actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
@@ -159,11 +172,13 @@ python -m dapo.main_dapo \
     trainer.nnodes="${nnodes}" \
     trainer.balance_batch=False \
     trainer.val_before_train=False \
-    trainer.test_freq=-1 \
+    trainer.test_freq=10 \
     trainer.save_freq=10 \
     trainer.total_epochs=10 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
+    +trainer.max_actor_ckpt_to_keep=3 \
+    +trainer.max_critic_ckpt_to_keep=3 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
-    +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 
+    +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log

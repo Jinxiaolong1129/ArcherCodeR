@@ -330,6 +330,11 @@ actor_rollout_ref:
     # recompute entropy
     entropy_checkpointing: False
 
+    # sync reference model with actor model
+    sync_ref_model: False
+    ref_model_sync_steps: 0
+    ref_model_mixup_alpha: 0.0
+
   # Rollout model config.
   rollout:
 

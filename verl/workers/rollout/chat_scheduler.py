@@ -368,6 +368,7 @@ class ChatCompletionScheduler:
             await session.close()
 
     async def generate_sequences(self, batch: DataProto) -> DataProto:
+        # breakpoint()
         t_start = time.time()
         kwargs = dict(
             model=self.model_name,
