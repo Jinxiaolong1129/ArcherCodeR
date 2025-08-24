@@ -57,14 +57,15 @@ def get_custom_reward_fn(config):
     return wrapped_fn
 
 
-def load_reward_manager(config, tokenizer, num_examine, **reward_kwargs):
+def load_reward_manager(config, tokenizer, num_examine=0, for_validation=False, **reward_kwargs):
     """
-    Load and initialize a reward manager based on the configuration.
+    Load and instantiate a reward manager based on the provided configuration.
 
     Args:
-        config: PPO trainer configuration object containing reward_model fields.
-        tokenizer: Tokenizer object used for processing text.
-        num_examine: Number of samples to examine.
+        config: Configuration object containing reward model settings.
+        tokenizer: Tokenizer instance for processing text.
+        num_examine (int, optional): Number of batches to examine for debugging. Defaults to 0.
+        for_validation (bool, optional): Whether this is for validation. Defaults to False.
         **reward_kwargs: Additional keyword arguments for the reward manager.
 
     Returns:
@@ -83,20 +84,42 @@ def load_reward_manager(config, tokenizer, num_examine, **reward_kwargs):
     reward_manager_name = config.reward_model.get("reward_manager", "naive")
     reward_manager_cls = get_reward_manager_cls(reward_manager_name)
 
-    # Try to get a custom reward function based on the configuration
-    compute_score = get_custom_reward_fn(config)
-    final_compute_score = compute_score
-
-    if compute_score is None:
-        sandbox_config = config.reward_model.get("sandbox_fusion")
-        sandbox_url = sandbox_config.get("url") if sandbox_config else None
-        if sandbox_url:
-            sandbox_manager = multiprocessing.Manager()
-            # Create a semaphore to control concurrent access to the sandbox
-            _concurrent_semaphore = sandbox_manager.Semaphore(sandbox_config.get("max_concurrent", 64))
-            final_compute_score = partial(default_compute_score, sandbox_fusion_url=sandbox_url, concurrent_semaphore=_concurrent_semaphore)
+    # Check if we should use rewards/general_reward.py (like DAPO)
+    use_general_reward = config.reward_model.get("use_general_reward", False)
+    
+    # Special handling for Intuitor algorithm
+    if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator == "intuitor":
+        if for_validation:
+            # For validation, use actual reward function (e.g., livecodebench) - import directly like DAPO
+            print("🎯 Loading general_reward_fn for Intuitor validation (supports livecodebench)")
+            from rewards.general_reward import general_reward_fn
+            final_compute_score = general_reward_fn
         else:
-            final_compute_score = default_compute_score
+            # For training, use dummy reward since Intuitor uses self-certainty
+            print("🎯 Loading dummy reward function for Intuitor training (uses self-certainty)")
+            def dummy_reward_fn(data_source: str, solution_str: str, ground_truth, extra_info=None, enable_llm=False, is_eval=False):
+                return 0.0
+            final_compute_score = dummy_reward_fn
+    elif use_general_reward:
+        # Use rewards/general_reward.py like DAPO does
+        print("🎯 Loading general_reward_fn from rewards/ package (DAPO-style)")
+        from rewards.general_reward import general_reward_fn
+        final_compute_score = general_reward_fn
+    else:
+        # Try to get a custom reward function based on the configuration
+        compute_score = get_custom_reward_fn(config)
+        final_compute_score = compute_score
+
+        if compute_score is None:
+            sandbox_config = config.reward_model.get("sandbox_fusion")
+            sandbox_url = sandbox_config.get("url") if sandbox_config else None
+            if sandbox_url:
+                sandbox_manager = multiprocessing.Manager()
+                # Create a semaphore to control concurrent access to the sandbox
+                _concurrent_semaphore = sandbox_manager.Semaphore(sandbox_config.get("max_concurrent", 64))
+                final_compute_score = partial(default_compute_score, sandbox_fusion_url=sandbox_url, concurrent_semaphore=_concurrent_semaphore)
+            else:
+                final_compute_score = default_compute_score
 
     # Instantiate and return the reward manager with the specified parameters
     return reward_manager_cls(

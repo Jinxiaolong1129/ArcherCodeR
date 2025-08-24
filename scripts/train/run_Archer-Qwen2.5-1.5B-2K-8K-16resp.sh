@@ -87,7 +87,7 @@ echo "🎯 Total tokens per batch: $((train_prompt_bsz * n_resp_per_prompt * v_m
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-python -m dapo.main_dapo \
+/home/ubuntu/miniconda/envs/archer/bin/python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \

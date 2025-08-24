@@ -481,21 +481,21 @@ class DataParallelPPOActor(BasePPOActor):
                         ref_log_prob = data["ref_log_prob"]
                         # compute kl loss
                         kld = kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=self.config.kl_loss_type)
-                        if self.config.use_token_entropy_separate:
+                        if self.config.get("use_token_entropy_separate", False):
                             low_entropy_kl_loss = agg_loss(loss_mat=kld, loss_mask=high_entropy_mask, loss_agg_mode=loss_agg_mode)
                             high_entropy_kl_loss = agg_loss(loss_mat=kld, loss_mask=low_entropy_mask, loss_agg_mode=loss_agg_mode)
                             kl_loss = low_entropy_kl_loss + high_entropy_kl_loss
-                            policy_loss = policy_loss + low_entropy_kl_loss * self.config.kl_loss_coef + high_entropy_kl_loss * self.config.high_entropy_kl_loss_scale_coef
+                            policy_loss = policy_loss + low_entropy_kl_loss * self.config.kl_loss_coef + high_entropy_kl_loss * self.config.get("high_entropy_kl_loss_scale_coef", 1.0)
                         else:
                             kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
                             policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
 
                         metrics["actor/kl_loss"] = kl_loss.detach().item()
                         metrics["actor/kl_coef"] = self.config.kl_loss_coef
-                        if self.config.use_token_entropy_separate:
+                        if self.config.get("use_token_entropy_separate", False):
                             metrics["actor/low_entropy_kl_loss"] = low_entropy_kl_loss.detach().item()
                             metrics["actor/high_entropy_kl_loss"] = high_entropy_kl_loss.detach().item()
-                            metrics["actor/high_entropy_kl_loss_scale_coef"] = self.config.high_entropy_kl_loss_scale_coef
+                            metrics["actor/high_entropy_kl_loss_scale_coef"] = self.config.get("high_entropy_kl_loss_scale_coef", 1.0)
 
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz

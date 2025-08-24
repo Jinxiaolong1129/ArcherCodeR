@@ -72,6 +72,20 @@ pip install --no-cache-dir flash_attn-2.7.3+cu12torch2.5cxx11abiFALSE-cp310-cp31
 
 pip install -e .
 ```
+
+
+```bash
+# Installing Python 3.10 Environment.
+conda create -n archer python=3.10 -y
+conda activate archer
+
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+pip install --no-cache-dir flash_attn-2.7.3+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+
+pip install -e .
+```
+
+
 cd ArcherCodeR
 
 ### Data Preparation

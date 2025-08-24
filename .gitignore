@@ -204,3 +204,6 @@ output/
 Miniconda3-latest-Linux-x86_64.sh
 wandb/
 outputs/
+checkpoints/
+ray_temp/
+wandb/

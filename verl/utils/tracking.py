@@ -134,6 +134,74 @@ class Tracking:
             if backend is None or default_backend in backend:
                 logger_instance.log(data=data, step=step)
 
+    def info(self, message, *args):
+        """Log an info message to console and any configured loggers that support text logging."""
+        if args:
+            message = message % args
+        
+        # Always print to console for immediate feedback
+        print(f"INFO: {message}")
+        
+        # Log to console backend if available
+        if "console" in self.logger:
+            try:
+                self.console_logger.info(message)
+            except AttributeError:
+                pass  # console_logger might not have info method
+
+    def debug(self, message, *args):
+        """Log a debug message to console and any configured loggers."""
+        if args:
+            message = message % args
+        
+        # For debug, we might want to be less verbose on console
+        print(f"DEBUG: {message}")
+        
+        if "console" in self.logger:
+            try:
+                self.console_logger.debug(message)
+            except AttributeError:
+                pass
+
+    def warning(self, message, *args):
+        """Log a warning message to console and any configured loggers."""
+        if args:
+            message = message % args
+        
+        print(f"WARNING: {message}")
+        
+        if "console" in self.logger:
+            try:
+                self.console_logger.warning(message)
+            except AttributeError:
+                pass
+
+    def error(self, message, *args):
+        """Log an error message to console and any configured loggers."""
+        if args:
+            message = message % args
+        
+        print(f"ERROR: {message}")
+        
+        if "console" in self.logger:
+            try:
+                self.console_logger.error(message)
+            except AttributeError:
+                pass
+
+    def critical(self, message, *args):
+        """Log a critical message to console and any configured loggers."""
+        if args:
+            message = message % args
+        
+        print(f"CRITICAL: {message}")
+        
+        if "console" in self.logger:
+            try:
+                self.console_logger.critical(message)
+            except AttributeError:
+                pass
+            
     def __del__(self):
         if "wandb" in self.logger:
             self.logger["wandb"].finish(exit_code=0)

@@ -261,56 +261,56 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
+    elif adv_estimator == AdvantageEstimator.INTUITOR:
+        # Get the token-level self-certainty and response mask
+        self_certaintys = data.batch["self_certaintys"]          # shape: [B, T]
+        response_mask = data.batch["response_mask"].float()      # shape: [B, T], convert to float for correct division
+
+        # Compute sentence-wise mean self-certainty
+        # Multiply by response_mask to zero out non-response tokens
+        masked_certainty = self_certaintys * response_mask       # [B, T]
+        sum_certainty = masked_certainty.sum(dim=-1)             # [B]
+        count = response_mask.sum(dim=-1) + 1e-8                 # avoid divide-by-zero; [B]
+        sentence_wise_mean = sum_certainty / count               # [B]
+        # Broadcast sentence-level scores back to token-level shape for compatibility
+        # Use expand_as instead of repeat to avoid memory copy issues
+        token_level_rewards = sentence_wise_mean.unsqueeze(1).expand_as(self_certaintys)  # [B, T]
+
+        print('-------------------------------- This is Intuitor --------------------------------')
+        print(f"data.batch['self_certaintys'].shape: {data.batch['self_certaintys'].shape}")
+        print(f"data.batch['self_certaintys']: {data.batch['self_certaintys']}")
+        print(f"data.batch['response_mask']: {data.batch['response_mask']}")
+        print(f"sentence_wise_mean: {sentence_wise_mean}")
+        print(f"sentence_wise_mean.shape: {sentence_wise_mean.shape}")
+        print(f"token_level_rewards: {token_level_rewards}")
+        print('-------------------------------- End of Intuitor --------------------------------')
+
+        # Use this in the GRPO advantage computation
+        advantages, returns = core_algos.compute_grpo_outcome_advantage(
+            token_level_rewards=token_level_rewards,
+            response_mask=response_mask,
+            index=data.non_tensor_batch["uid"],
+            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+        )
+        data.batch["advantages"] = advantages
+        data.batch["returns"] = returns
     else:
-        # handle all other adv estimator type other than GAE and GRPO
-        if adv_estimator == AdvantageEstimator.INTUITOR:
-            # Get the token-level self-certainty and response mask
-            self_certaintys = data.batch["self_certaintys"]          # shape: [B, T]
-            response_mask = data.batch["response_mask"].float()      # shape: [B, T], convert to float for correct division
+        # handle all other adv estimator type other than GAE, GRPO, and INTUITOR
+        adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
+        
+        adv_kwargs = {
+            "token_level_rewards": data.batch["token_level_rewards"],
+            "response_mask": data.batch["response_mask"],
+            "config": config,
+        }
+        if "uid" in data.non_tensor_batch:
+            adv_kwargs["index"] = data.non_tensor_batch["uid"]
+        if norm_adv_by_std_in_grpo is not None:
+            adv_kwargs["norm_adv_by_std_in_grpo"] = norm_adv_by_std_in_grpo
 
-            # Compute sentence-wise mean self-certainty
-            # Multiply by response_mask to zero out non-response tokens
-            masked_certainty = self_certaintys * response_mask       # [B, T]
-            sum_certainty = masked_certainty.sum(dim=-1)             # [B]
-            count = response_mask.sum(dim=-1) + 1e-8                 # avoid divide-by-zero; [B]
-            sentence_wise_mean = sum_certainty / count               # [B]
-            # Broadcast sentence-level scores back to token-level shape for compatibility
-            token_level_rewards = sentence_wise_mean.unsqueeze(1).expand_as(self_certaintys)  # [B, T]
-
-            print('-------------------------------- This is Intuitor --------------------------------')
-            print(f"data.batch['self_certaintys'].shape: {data.batch['self_certaintys'].shape}")
-            print(f"data.batch['self_certaintys']: {data.batch['self_certaintys']}")
-            print(f"data.batch['response_mask']: {data.batch['response_mask']}")
-            print(f"sentence_wise_mean: {sentence_wise_mean}")
-            print(f"sentence_wise_mean.shape: {sentence_wise_mean.shape}")
-            print(f"token_level_rewards: {token_level_rewards}")
-            print('-------------------------------- End of Intuitor --------------------------------')
-
-            # Use this in the GRPO advantage computation
-            advantages, returns = core_algos.compute_grpo_outcome_advantage(
-                token_level_rewards=token_level_rewards,
-                response_mask=response_mask,
-                index=data.non_tensor_batch["uid"],
-                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-            )
-            data.batch["advantages"] = advantages
-            data.batch["returns"] = returns
-        else:
-            adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
-            
-            adv_kwargs = {
-                "token_level_rewards": data.batch["token_level_rewards"],
-                "response_mask": data.batch["response_mask"],
-                "config": config,
-            }
-            if "uid" in data.non_tensor_batch:
-                adv_kwargs["index"] = data.non_tensor_batch["uid"]
-            if norm_adv_by_std_in_grpo is not None:
-                adv_kwargs["norm_adv_by_std_in_grpo"] = norm_adv_by_std_in_grpo
-
-            advantages, returns = adv_estimator_fn(**adv_kwargs)
-            data.batch["advantages"] = advantages
-            data.batch["returns"] = returns
+        advantages, returns = adv_estimator_fn(**adv_kwargs)
+        data.batch["advantages"] = advantages
+        data.batch["returns"] = returns
     return data
 
 
@@ -617,7 +617,7 @@ class RayPPOTrainer:
         samples = samples[:generations_to_log]
 
         # Log to each configured logger
-        self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
+        self.validation_generations_tracklogger.log(self.config.trainer.logger, samples, self.global_steps)
 
     def _validate(self):
         data_source_lst = []
@@ -987,7 +987,7 @@ class RayPPOTrainer:
 
         from verl.utils.tracking import Tracking
 
-        logger = Tracking(
+        tracklogger = Tracking(
             project_name=self.config.trainer.project_name,
             experiment_name=self.config.trainer.experiment_name,
             default_backend=self.config.trainer.logger,
@@ -1015,7 +1015,7 @@ class RayPPOTrainer:
             print("📊 Initial validation metrics:")
             pprint(val_metrics)
             
-            logger.log(data=val_metrics, step=self.global_steps)
+            tracklogger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):
                 print("🛑 Validation only mode, exiting...")
                 return
@@ -1444,7 +1444,7 @@ class RayPPOTrainer:
                 logger.info(f"⏱️  Estimated remaining time: {estimated_total_time/3600:.1f} hours")
 
                 # TODO: make a canonical logger that supports various backend
-                logger.log(data=metrics, step=self.global_steps)
+                tracklogger.log(data=metrics, step=self.global_steps)
 
                 progress_bar.update(1)
                 self.global_steps += 1

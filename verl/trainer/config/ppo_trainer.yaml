@@ -716,6 +716,10 @@ reward_model:
   # the reward manager can be set to prime for parallel verification.
   reward_manager: naive
 
+  # Whether to use rewards/general_reward.py (like DAPO does)
+  # Set to True to use the same reward functions as DAPO for code/livecodebench evaluation
+  use_general_reward: False
+
   # Whether to launch custom reward function asynchronously during log_prob
   launch_reward_fn_async: False
 

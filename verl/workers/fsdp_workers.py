@@ -674,18 +674,12 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def compute_log_prob(self, data: DataProto):
-        # when is_lora is True, we use the actor without lora applied to calculate the log_prob
-        # which is mostly used for ref log_prob calculation
         assert self._is_actor
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
 
         # Support all hardwares
-        from contextlib import nullcontext
-
-        is_lora = data.meta_info.pop("is_lora", False)
-        adapter_ctx = self.actor.actor_module.disable_adapter() if is_lora else nullcontext()
-        data = data.to(get_device_id())
+        data = data.to(torch.cuda.current_device())
         # we should always recompute old_log_probs when it is HybridEngine
         data.meta_info["micro_batch_size"] = self.config.rollout.log_prob_micro_batch_size_per_gpu
         data.meta_info["max_token_len"] = self.config.rollout.log_prob_max_token_len_per_gpu
@@ -694,13 +688,11 @@ class ActorRolloutRefWorker(Worker):
         # perform recompute log_prob
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
-            with adapter_ctx:
-                output, entropys, self_certaintys = self.actor.compute_log_prob(
-                    data=data, 
-                    calculate_entropy=True, 
-                    calculate_self_certainty=True
-                )
-
+            output, entropys, self_certaintys = self.actor.compute_log_prob(
+                data=data, 
+                calculate_entropy=True, 
+                calculate_self_certainty=True
+            )
             output = DataProto.from_dict(
                 tensors={"old_log_probs": output, "entropys": entropys, "self_certaintys": self_certaintys},
                 meta_info={"temperature": self.config.rollout.temperature},
@@ -722,13 +714,6 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def compute_ref_log_prob(self, data: DataProto):
-        if self._is_lora:
-            # if _is_lora, actor without lora applied is the ref
-            data.meta_info["is_lora"] = True
-            data = self.compute_log_prob(data)
-            # this old_log_probs is in fact ref_log_prob
-            data = DataProto.from_dict(tensors={"ref_log_prob": data.batch["old_log_probs"]})
-            return data
         assert self._is_ref
 
         if self.sync_ref_model:
@@ -745,10 +730,8 @@ class ActorRolloutRefWorker(Worker):
                 target_param.data.mul_(1.0 - alpha).add_(device_param, alpha=alpha)
             torch.distributed.barrier()
 
-        # else:
-        # otherwise, the class have a standalone ref model
         # Support all hardwares
-        data = data.to(get_device_id())
+        data = data.to(torch.cuda.current_device())
 
         micro_batch_size = self.config.ref.log_prob_micro_batch_size_per_gpu
         data.meta_info["micro_batch_size"] = micro_batch_size
@@ -757,7 +740,7 @@ class ActorRolloutRefWorker(Worker):
         data.meta_info["use_dynamic_bsz"] = self.config.ref.log_prob_use_dynamic_bsz
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
-            output, _ = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False)
+            output, _, _ = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False, calculate_self_certainty=False)
             output = DataProto.from_dict(tensors={"ref_log_prob": output})
             output = self.ulysses_sharding_manager.postprocess_data(output)
 

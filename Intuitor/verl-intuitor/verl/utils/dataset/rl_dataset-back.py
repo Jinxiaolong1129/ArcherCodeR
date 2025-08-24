@@ -1,11 +1,18 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-'''
-@Time    :   2025/06/17 19:20:07
-@Author  :   wangjiakang
-@File    :   rl_dataset.py
-'''
-
+# Copyright 2024 Bytedance Ltd. and/or its affiliates
+# Copyright 2023-2024 SGLang Team
+# Copyright 2025 ModelBest Inc. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import copy
 import logging
@@ -16,7 +23,6 @@ from typing import List, Optional, Union
 
 import datasets
 import numpy as np
-import pandas as pd
 import torch
 from omegaconf import DictConfig, ListConfig
 from torch.utils.data import Dataset
@@ -29,17 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 def collate_fn(data_list: list[dict]) -> dict:
-    """
-    Collate a batch of sample dicts into batched tensors and arrays.
-
-    Args:
-        data_list: List of dicts mapping feature names to torch.Tensor or other values.
-
-    Returns:
-        Dict where tensor entries are stacked into a torch.Tensor of shape
-        (batch_size, *dims) and non-tensor entries are converted to
-        np.ndarray of dtype object with shape (batch_size,).
-    """
+    """Collate a batch of data."""
     tensors = defaultdict(list)
     non_tensors = defaultdict(list)
 
@@ -61,19 +57,7 @@ def collate_fn(data_list: list[dict]) -> dict:
 
 class RLHFDataset(Dataset):
     """
-    Load and preprocess RLHF data from Parquet files.
-
-    - Caches files locally.
-    - Reads into a HuggingFace Dataset and tokenizes prompts.
-    - Optionally handles images/videos via a ProcessorMixin.
-    - Filters prompts over a max length.
-    - Supports resuming from checkpoints.
-
-    Args:
-        data_files (str or list): Path(s) to Parquet file(s).
-        tokenizer (PreTrainedTokenizer): For the tokenization of text to token IDs.
-        config (DictConfig): Options like cache_dir, prompt_key, max_prompt_length, truncation, etc.
-        processor (ProcessorMixin, optional): Multimodal preprocessor for images/videos.
+    We assume the dataset contains a column that contains prompts and other information
     """
 
     def __init__(
@@ -98,13 +82,11 @@ class RLHFDataset(Dataset):
         self.video_key = config.get("video_key", "videos")
         self.max_prompt_length = config.get("max_prompt_length", 1024)
         self.return_raw_chat = config.get("return_raw_chat", False)
-        self.return_full_prompt = config.get("return_full_prompt", False)
         self.truncation = config.get("truncation", "error")
         self.filter_overlong_prompts = config.get("filter_overlong_prompts", True)
 
         self.num_workers = config.get("filter_overlong_prompts_workers", max(1, os.cpu_count() // 4))
         self.num_workers = min(self.num_workers, os.cpu_count())
-        self.use_shm = config.get("use_shm", False)
         self.chat_template_func = config.get("chat_template_func", None)
         self.need_tools_kwargs = config.get("need_tools_kwargs", False)
         self.filter_prompts = config.get("filter_prompts", True)
@@ -117,39 +99,37 @@ class RLHFDataset(Dataset):
 
         data_files = self.data_files if not use_origin_parquet else self.original_data_files
         for i, parquet_file in enumerate(data_files):
-            self.data_files[i] = copy_to_local(src=parquet_file, cache_dir=self.cache_dir, use_shm=self.use_shm)
+            self.data_files[i] = copy_to_local(src=parquet_file, cache_dir=self.cache_dir)
 
     def _read_files_and_tokenize(self):
         dataframes = []
-        for parquet_file in self.data_files:
-            # read parquet files and cache
-            try:
-                dataframe = pd.read_parquet(parquet_file)
-            except Exception as e:
-                print(f"Error reading parquet file {parquet_file}: {str(e)}")
-                # Try loading json version instead
-                json_file = parquet_file.replace('.parquet', '.json')
-                try:
-                    dataframe = pd.read_json(json_file, orient='records')
-                    print(f"Successfully loaded JSON version from {json_file}")
-                except Exception as json_e:
-                    print(f"Also failed to read JSON file {json_file}: {str(json_e)}")
-                    raise e
+        for data_file in self.data_files:
+            # 根据文件扩展名自动检测格式
+            if data_file.endswith('.json'):
+                dataframe = datasets.load_dataset("json", data_files=data_file)["train"]
+            elif data_file.endswith('.parquet'):
+                dataframe = datasets.load_dataset("parquet", data_files=data_file)["train"]
+            elif data_file.endswith('.jsonl'):
+                dataframe = datasets.load_dataset("json", data_files=data_file)["train"]
+            else:
+                # 默认尝试 json 格式
+                dataframe = datasets.load_dataset("json", data_files=data_file)["train"]
             dataframes.append(dataframe)
-        self.dataframe = pd.concat(dataframes)
+        self.dataframe: datasets.Dataset = datasets.concatenate_datasets(dataframes)
 
-        print(f'dataset len: {len(self.dataframe)}')
+        print(f"dataset len: {len(self.dataframe)}")
 
         # filter out too long prompts
         if self.filter_overlong_prompts:
             tokenizer = self.tokenizer
             prompt_key = self.prompt_key
+            self.dataframe = self.dataframe.filter(
+                lambda doc: len(tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True)) <= self.max_prompt_length,
+                num_proc=self.num_workers,
+                desc=f"Filtering prompts longer than {self.max_prompt_length} tokens",
+            )
 
-            self.dataframe = self.dataframe[self.dataframe.apply(lambda doc: len(
-                tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True)) <= self.max_prompt_length,
-                                                                axis=1)]
-
-            print(f'filter dataset len: {len(self.dataframe)}')
+            print(f"filter dataset len: {len(self.dataframe)}")
 
     def resume_dataset_state(self):
         self.serialize_dataset = not hasattr(self, "original_data_files")
@@ -186,8 +166,7 @@ class RLHFDataset(Dataset):
         """
         Note that we also return the raw_input_ids so that it can be combined with other chat template
         """
-        row_dict: dict = self.dataframe.iloc[item].to_dict()
-
+        row_dict: dict = self.dataframe[item]
         messages = self._build_messages(row_dict)
         model_inputs = {}
 
@@ -237,7 +216,7 @@ class RLHFDataset(Dataset):
             truncation=self.truncation,
         )
 
-        if self.processor is not None and "Qwen2VLImageProcessor" in self.processor.image_processor.__class__.__name__:
+        if self.processor is not None and self.processor.image_processor.__class__.__name__ == "Qwen2VLImageProcessor":
             from verl.models.transformers.qwen2_vl import get_rope_index
 
             position_ids = [
@@ -275,10 +254,6 @@ class RLHFDataset(Dataset):
         # encode prompts without chat template
         if self.return_raw_chat:
             row_dict["raw_prompt"] = messages
-
-        # get prompts with chat template
-        if self.return_full_prompt:
-            row_dict["full_prompts"] = raw_prompt  # array of strings
 
         # add index for each prompt
         index = row_dict.get("extra_info", {}).get("index", 0)

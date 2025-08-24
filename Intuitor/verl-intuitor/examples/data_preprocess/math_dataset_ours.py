@@ -30,7 +30,7 @@ def extract_solution(solution_str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dir", default="~/data/math")
+    parser.add_argument("--local_dir", default="/mnt/people/zhuoterq/xiaolong-swebench/ArcherCodeR/data/math")
     parser.add_argument("--hdfs_dir", default=None)
     parser.add_argument("--model", default="other", choices=["Qwen2.5-1.5B", "Qwen2.5-3B", "Qwen2.5-7B", "other"])
     parser.add_argument("--seed", type=int, default=42, help="Random seed for shuffling the dataset")

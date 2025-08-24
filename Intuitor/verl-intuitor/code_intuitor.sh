@@ -3,6 +3,7 @@
 set -e
 set -x
 
+
 # 导入环境变量
 export $(grep -v '^#' .env | xargs)
 echo "Your WANDB_API_KEY is: $WANDB_API_KEY"
@@ -27,11 +28,11 @@ sleep 3
 
 PYTHONUNBUFFERED=1 /home/ubuntu/miniconda/envs/archer/bin/python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=intuitor \
-    data.train_files=/mnt/people/zhuoterq/xiaolong-swebench/ArcherCodeR/data/math/train.parquet \
-    data.val_files=/mnt/people/zhuoterq/xiaolong-swebench/ArcherCodeR/data/math/test.parquet \
-    data.train_batch_size=128 \
-    data.max_prompt_length=512 \
-    data.max_response_length=3072 \
+    data.train_files=/mnt/people/zhuoterq/xiaolong-swebench/ArcherCodeR/data/train/archercoder-1.5b-train.json \
+    data.val_files=/mnt/people/zhuoterq/xiaolong-swebench/ArcherCodeR/data/test/livecodebench_v5.json \
+    data.train_batch_size=64 \
+    data.max_prompt_length=2048 \
+    data.max_response_length=8192 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     actor_rollout_ref.model.path=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B \
@@ -40,8 +41,8 @@ PYTHONUNBUFFERED=1 /home/ubuntu/miniconda/envs/archer/bin/python -m verl.trainer
     actor_rollout_ref.actor.optim.warmup_style=cosine \
     actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=0.1 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=128 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=32 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.005 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
@@ -51,8 +52,10 @@ PYTHONUNBUFFERED=1 /home/ubuntu/miniconda/envs/archer/bin/python -m verl.trainer
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.85 \
-    actor_rollout_ref.rollout.n=8 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
+    actor_rollout_ref.rollout.n=16 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=$((2048 + 9000)) \
+    actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
@@ -62,9 +65,12 @@ PYTHONUNBUFFERED=1 /home/ubuntu/miniconda/envs/archer/bin/python -m verl.trainer
     trainer.nnodes=1 \
     trainer.logger=['console','wandb'] \
     trainer.project_name=verl \
-    trainer.experiment_name=math_intuitor_fixed \
+    trainer.experiment_name=code_intuitor \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
     trainer.total_epochs=1 \
-    ray_init.num_cpus=256 \
-    2>&1 | tee verl_math_intuitor_fixed.log
+    2>&1 | tee verl_code_intuitor.log
+
+
+
+# bash code_intuitor.sh

@@ -13,8 +13,34 @@ import ray
 from .dapo_ray_trainer import RayDAPOTrainer
 
 def get_custom_reward_fn(config):
-    from rewards.general_reward import general_reward_fn
-    return general_reward_fn
+    """
+    Get custom reward function based on algorithm and data source.
+    
+    For Intuitor algorithm: Returns a dummy reward function since it uses self-certainty
+    For other algorithms: Returns the general reward function that supports:
+    - Code tasks: 'code', 'livecodebench', 'livecodebench_v5', 'livecodebench_v6', 'humanevalplus'
+    - Math tasks: 'math', 'aime2024', 'aime2025', 'math500'
+    """
+    # For Intuitor algorithm, we don't need external rewards
+    if config.algorithm.adv_estimator == "intuitor":
+        def dummy_reward_fn(data_source: str, solution_str: str, ground_truth, extra_info=None, enable_llm=False, is_eval=False):
+            # Intuitor uses self-certainty as reward, so external reward is not needed
+            # Return 0.0 to maintain compatibility with the training pipeline
+            return 0.0
+        return dummy_reward_fn
+    else:
+        # Import and return the general reward function that supports code and math tasks
+        from rewards.general_reward import general_reward_fn
+        
+        # Log supported data sources for debugging
+        supported_code_sources = ['code', 'livecodebench', 'livecodebench_v5', 'livecodebench_v6', 'humanevalplus']
+        supported_math_sources = ['math', 'aime2024', 'aime2025', 'math500']
+        
+        print(f"🎯 Using general_reward_fn with support for:")
+        print(f"   📝 Code tasks: {supported_code_sources}")
+        print(f"   🔢 Math tasks: {supported_math_sources}")
+        
+        return general_reward_fn
 
 
 @hydra.main(config_path="config", config_name="dapo_trainer", version_base=None)
