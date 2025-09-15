@@ -11,3 +11,11 @@ sbatch scripts/train/slurm-run_Archer-Qwen2.5-1.5B-2K-16K-16resp.sh
 
 # 提交第三个作业
 sbatch scripts/train/slurm-run_Archer-Qwen2.5-3B-2K-8K-16resp.sh
+
+
+
+
+for job in $(squeue -u xuandong_zhao -h -o "%A"); do
+  echo "========== JOB $job =========="
+  scontrol show job $job
+done

@@ -1,0 +1,232 @@
+# 基于官方脚本的交替训练配置
+# 确保与官方GRPO和Intuitor脚本完全一致
+
+defaults:
+  - ppo_trainer  # 继承基础配置
+  - _self_       # 确保当前配置优先级最高
+
+# 实验配置
+trainer:
+  experiment_name: alternating_official
+  project_name: ArcherCodeR
+  logger: ['console', 'wandb']
+  n_gpus_per_node: 8
+  nnodes: 1
+  balance_batch: false
+  val_before_train: false
+  test_freq: 10
+  save_freq: 10
+  total_epochs: 10
+  resume_mode: auto
+  critic_warmup: 0
+  max_actor_ckpt_to_keep: 2
+  max_critic_ckpt_to_keep: 2
+  enable_overlong_filter: false
+  rejection_sample: true
+
+# 交替训练配置
+alternating:
+  algorithms: ["intuitor", "grpo"]
+  steps_per_phase: 50
+  start_algorithm: "intuitor"
+  
+  # 算法特定配置 - 基于官方脚本
+  algorithm_configs:
+    intuitor:
+      # 基于 intuitor_Qwen-1.5B-2k-8k-8k-batch64-no-kl-simple_ray.sh
+      model:
+        use_fused_kernels: false          # Intuitor专用设置
+      actor:
+        optim:
+          lr: 3e-6                    # 官方Intuitor学习率
+          warmup_style: cosine        # 官方Intuitor预热方式
+          lr_warmup_steps_ratio: 0.1  # 官方Intuitor预热比例
+          weight_decay: 0.1           # 官方权重衰减
+        ppo_epochs: 1                 # 官方Intuitor PPO epochs
+        ppo_mini_batch_size: 32       # train_prompt_mini_bsz
+        ppo_micro_batch_size_per_gpu: 1  # micro_batch_size_per_gpu
+        entropy_coeff: 0              # 官方Intuitor熵系数
+        use_kl_loss: false            # 官方设置
+        grad_clip: 1.0                # 官方梯度裁剪
+        fsdp_config:
+          param_offload: false        # offload=False
+          optimizer_offload: false    # offload=False
+        use_dynamic_bsz: false        # 官方设置
+        ppo_max_token_len_per_gpu: 10240  # actor_ppo_max_token_len
+      rollout:
+        name: vllm                    # 官方Intuitor使用vllm
+        gpu_memory_utilization: 0.8   # 官方Intuitor设置
+        tensor_model_parallel_size: 2 # gen_tp
+        enable_chunked_prefill: false # 官方Intuitor设置
+        temperature: 1.0              # 官方温度
+        top_p: 1.0                    # 官方top_p
+        top_k: -1                     # 官方top_k
+        n: 16                         # n_resp_per_prompt
+        max_model_len: 10240          # actor_ppo_max_token_len
+        max_num_batched_tokens: 10240 # max_prompt_length + v_max_response_length
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 10240  # infer_ppo_max_token_len
+        val_kwargs:
+          n: 4                        # v_n
+          do_sample: true             # 官方Intuitor验证设置
+          temperature: 0.8            # v_temperature
+          top_p: 1.0                  # v_top_p
+          top_k: -1                   # v_top_k
+          response_length: 8192       # v_max_response_length
+      ref:
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 10240
+        fsdp_config:
+          param_offload: true         # 官方Intuitor ref设置
+      algorithm:
+        use_kl_in_reward: false       # 官方设置
+        
+    grpo:
+      # 基于 run_Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl.sh
+      actor:
+        optim:
+          lr: 1e-6                    # 官方GRPO学习率
+          lr_warmup_steps: 10         # 官方GRPO预热步数
+          weight_decay: 0.1           # 官方权重衰减
+        ppo_epochs: 3                 # 官方GRPO PPO epochs
+        ppo_mini_batch_size: 32       # train_prompt_mini_bsz
+        ppo_micro_batch_size_per_gpu: 1  # micro_batch_size_per_gpu
+        entropy_coeff: 0              # 官方GRPO熵系数
+        use_kl_loss: false            # use_kl_loss=False
+        kl_loss_coef: 0.0             # kl_loss_coef=0.0
+        kl_loss_type: low_var_kl      # 官方设置
+        grad_clip: 1.0                # 官方梯度裁剪
+        clip_ratio_low: 0.2           # 官方clip参数
+        clip_ratio_high: 0.2          # 官方clip参数
+        clip_ratio_c: 10.0            # 官方设置
+        loss_agg_mode: token-mean     # 官方设置
+        # GRPO特有的token熵分离参数
+        use_token_entropy_separate: true      # 官方GRPO设置
+        high_entropy_kl_loss_scale_coef: 0.0  # 官方设置
+        low_entropy_clip_ratio_low: 0.2       # 官方设置
+        low_entropy_clip_ratio_high: 0.2      # 官方设置
+        high_entropy_clip_ratio_low: 0.5      # 官方设置
+        high_entropy_clip_ratio_high: 0.5     # 官方设置
+        fsdp_config:
+          param_offload: false        # offload=False
+          optimizer_offload: false    # offload=False
+          fsdp_size: -1               # 官方设置
+        use_dynamic_bsz: false        # 官方设置
+        ppo_max_token_len_per_gpu: 10240  # actor_ppo_max_token_len
+        ulysses_sequence_parallel_size: 1  # sp_size
+      rollout:
+        name: vllm                    # 使用vllm
+        gpu_memory_utilization: 0.75  # 官方GRPO设置
+        tensor_model_parallel_size: 2 # gen_tp
+        enable_chunked_prefill: true  # 官方GRPO设置
+        temperature: 1.0              # 官方温度
+        top_p: 1.0                    # 官方top_p
+        top_k: -1                     # 官方top_k
+        n: 16                         # n_resp_per_prompt
+        max_model_len: 10240          # max_prompt_length + v_max_response_length
+        max_num_batched_tokens: 10240 # max_prompt_length + v_max_response_length
+        log_prob_use_dynamic_bsz: false
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 10240  # infer_ppo_max_token_len
+        val_kwargs:
+          n: 4                        # v_n
+          do_sample: true             # 官方验证设置
+          temperature: 0.8            # v_temperature
+          top_p: 1.0                  # v_top_p
+          top_k: -1                   # v_top_k
+          response_length: 8192       # v_max_response_length
+      ref:
+        log_prob_use_dynamic_bsz: false
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 10240
+        fsdp_config:
+          param_offload: false        # 官方GRPO ref设置
+        ulysses_sequence_parallel_size: 1  # sp_size
+      algorithm:
+        use_kl_in_reward: false       # use_kl_in_reward=False
+        kl_ctrl:
+          kl_coef: 0.0                # kl_coef=0.0
+        norm_adv_by_std_in_grpo: true # GRPO特有
+
+# 基础模型配置
+actor_rollout_ref:
+  model:
+    path: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+    enable_gradient_checkpointing: true
+    use_remove_padding: true
+    
+  # 这些参数会被算法特定配置覆盖
+  actor:
+    strategy: fsdp
+    optim:
+      lr: 1e-6  # 默认值，会被覆盖
+      weight_decay: 0.1
+    ppo_mini_batch_size: 32
+    ppo_micro_batch_size_per_gpu: 1
+    grad_clip: 1.0
+    fsdp_config:
+      param_offload: false
+      optimizer_offload: false
+      
+  rollout:
+    name: vllm
+    gpu_memory_utilization: 0.75  # 默认值，会被覆盖
+    tensor_model_parallel_size: 2
+    enable_chunked_prefill: true  # 默认值，会被覆盖
+    max_model_len: 10240
+    max_num_batched_tokens: 10240
+    temperature: 1.0
+    top_p: 1.0
+    top_k: -1
+    n: 16
+    val_kwargs:
+      n: 4
+      do_sample: true
+      temperature: 0.8
+      top_p: 1.0
+      top_k: -1
+      response_length: 8192
+
+# 算法配置 (会被动态切换)
+algorithm:
+  adv_estimator: intuitor  # 初始算法
+  gamma: 1.0
+  lam: 1.0
+  use_kl_in_reward: false
+  norm_adv_by_std_in_grpo: true  # GRPO专用
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.0
+    horizon: 10000
+    target_kl: 0.1
+
+# 数据配置 - 与官方脚本一致
+data:
+  train_files: ./data/train/archercoder-1.5b-train.json
+  val_files: ./data/test/livecodebench_v5.json
+  prompt_key: prompt
+  train_batch_size: 64          # train_prompt_bsz
+  gen_batch_size: 64            # gen_prompt_bsz (Intuitor专用)
+  max_prompt_length: 2048       # 2K
+  max_response_length: 8192     # 8K
+  filter_overlong_prompts: true
+  truncation: 'error'
+  reward_fn_key: data_source
+
+# 奖励模型配置 - 与官方脚本一致
+reward_model:
+  enable: false  # 使用函数式奖励
+  reward_manager: wizard
+  overlong_buffer:
+    enable: false               # enable_overlong_buffer
+    len: 16                     # overlong_buffer_len
+    penalty_factor: 1.0         # overlong_penalty_factor
+
+# Critic配置 (GAE算法需要，其他算法不需要)
+critic:
+  enable: null  # 由算法自动决定
+  strategy: fsdp
+
+# Ray配置
+ray_init:
+  num_cpus: null

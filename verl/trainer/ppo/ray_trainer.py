@@ -1078,6 +1078,10 @@ class RayPPOTrainer:
                 epoch_samples_processed += samples_in_this_batch
                 total_samples_processed += samples_in_this_batch
                 
+                # 初始化metrics和timing_raw (修复UnboundLocalError)
+                metrics = {}
+                timing_raw = {}
+                
                 # 时间预估
                 if self.global_steps > 1:
                     avg_time_per_step = (time.time() - epoch_start_time + timing_raw.get('step', 0)) / batch_count if batch_count > 0 else 54.22
@@ -1095,9 +1099,6 @@ class RayPPOTrainer:
                 logger.info(f"📍 Epoch {epoch + 1}: Batch {batch_count}/{train_dataloader_size} ({epoch_progress:.1f}%)")
                 logger.info(f"📊 Samples: {samples_in_this_batch} this batch, {epoch_samples_processed}/{train_dataloader_size * actual_batch_size} this epoch, {total_samples_processed} total")
                 logger.info(f"⏰ ETA: {eta_minutes:.1f} minutes ({eta_minutes/60:.1f} hours)")
-                
-                metrics = {}
-                timing_raw = {}
                 
                 # 数据加载阶段
                 data_load_start = time.time()

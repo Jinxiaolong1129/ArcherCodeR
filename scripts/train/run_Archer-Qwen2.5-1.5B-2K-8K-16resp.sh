@@ -87,7 +87,7 @@ echo "🎯 Total tokens per batch: $((train_prompt_bsz * n_resp_per_prompt * v_m
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-/home/ubuntu/miniconda/envs/archer/bin/python -m dapo.main_dapo \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -169,8 +169,8 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.total_epochs=10 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
-    +trainer.max_actor_ckpt_to_keep=3 \
-    +trainer.max_critic_ckpt_to_keep=3 \
+    +trainer.max_actor_ckpt_to_keep=2 \
+    +trainer.max_critic_ckpt_to_keep=2 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
     +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 

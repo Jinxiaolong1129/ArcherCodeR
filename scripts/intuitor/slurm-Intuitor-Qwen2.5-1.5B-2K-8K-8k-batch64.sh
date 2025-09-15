@@ -10,9 +10,11 @@
 #SBATCH --account=dawn_song
 #SBATCH --mail-type=all
 #SBATCH --mail-user=jinxiaolong1129@gmail.com
-#SBATCH --output=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-8K-16resp/slurm_out_%j.txt
-#SBATCH --error=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-8K-16resp/slurm_error_%j.txt
-#SBATCH --job-name=archer-qwen2.5-1.5b-2k-8k-16resp
+#SBATCH --output=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-8k-batch64/slurm_out_%j.txt
+#SBATCH --error=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-8k-batch64/slurm_error_%j.txt
+#SBATCH --job-name=intuitor-qwen2.5-1.5b-2k-8k-8k-batch64
+
+
 
 # 导入环境变量
 if [ -f .env ]; then
@@ -24,6 +26,7 @@ else
     echo "Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
 fi
 
+
 # Clear Ray environment variables to force local cluster creation
 unset RAY_ADDRESS
 unset RAY_HEAD_NODE_HOST
@@ -34,14 +37,12 @@ unset ROCR_VISIBLE_DEVICES
 unset HIP_VISIBLE_DEVICES
 unset AMD_VISIBLE_DEVICES
 
-# Navigate to project directory
 cd /data/xuandong_zhao/mnt/xiaolong/ArcherCodeR
 
 # Make sure output directory exists for SLURM logs
-mkdir -p ./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-8K-16resp
+mkdir -p ./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64
 
 # Stop any existing Ray processes
 ray stop --force 2>/dev/null || true
 
-# Run the training script with explicit Ray CPU configuration
-bash scripts/train/run_Archer-Qwen2.5-1.5B-2K-8K-16resp.sh ray_init.num_cpus=160 
+bash scripts/intuitor/intuitor_Qwen-1.5B-2k-8k-8k-batch64.sh

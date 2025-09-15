@@ -4,15 +4,15 @@ set -xeuo pipefail
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Qwen2.5-1.5B-2K-16K-16resp'
+exp_name='Archer-Qwen2.5-1.5B-2K-8K-16resp-kl005'
 
 adv_estimator=grpo
 
-# kl config
-use_kl_in_reward=False
-kl_coef=0.0
-use_kl_loss=True
-kl_loss_coef=0.001
+# kl config - KL DIVERGENCE 0.005
+use_kl_in_reward=False  # 保持原始设置
+kl_coef=0.0  # 保持原始设置
+use_kl_loss=True  # 保持原始设置
+kl_loss_coef=0.005  # 5x higher than original (0.001 -> 0.005)
 kl_loss_type=low_var_kl
 
 # clip
@@ -22,11 +22,11 @@ loss_agg_mode=token-mean
 
 # Sequence lengths
 max_prompt_length=$((1024 * 2))  # 2K
-max_response_length=$((1024 * 16))  # 16K
+max_response_length=$((1024 * 8))  # 8K
 enable_overlong_buffer=False
 overlong_buffer_len=16
 overlong_penalty_factor=1.0
-v_max_response_length=$((1024 * 16))  # 16K
+v_max_response_length=$((1024 * 8))  # 8K
 
 # Batch sizes
 # train_prompt_bsz=32
@@ -63,10 +63,10 @@ actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 infer_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 offload=False
 
-# Token Mask
+# Token Mask - 保持原始设置
 use_token_entropy_separate=True
 token_entropy_quantile=0.8
-high_entropy_kl_loss_scale_coef=0.0
+high_entropy_kl_loss_scale_coef=0.0  # 保持原始设置
 low_entropy_clip_ratio_low=0.2
 low_entropy_clip_ratio_high=0.2
 high_entropy_clip_ratio_low=0.5
@@ -75,7 +75,7 @@ high_entropy_clip_ratio_high=0.5
 # Trainer
 use_overlong_filter=False
 
-echo "🚀 CONFIGURATION:"
+echo "🚀 CONFIGURATION (KL DIVERGENCE 0.005):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
@@ -83,6 +83,9 @@ echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
 echo "⚡ Tensor parallel: ${gen_tp}"
 echo "🎯 Total tokens per batch: $((train_prompt_bsz * n_resp_per_prompt * v_max_response_length))"
+echo "🔥 KL Loss Coefficient: ${kl_loss_coef}"
+echo "🔥 KL Reward Coefficient: ${kl_coef}"
+echo "🔥 High Entropy KL Scale: ${high_entropy_kl_loss_scale_coef}"
 
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"

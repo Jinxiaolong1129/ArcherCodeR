@@ -4,15 +4,15 @@ set -xeuo pipefail
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Qwen2.5-1.5B-2K-16K-16resp'
+exp_name='Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor'
 
 adv_estimator=grpo
 
-# kl config
+# kl config - DISABLED
 use_kl_in_reward=False
 kl_coef=0.0
-use_kl_loss=True
-kl_loss_coef=0.001
+use_kl_loss=False
+kl_loss_coef=0.0
 kl_loss_type=low_var_kl
 
 # clip
@@ -22,20 +22,16 @@ loss_agg_mode=token-mean
 
 # Sequence lengths
 max_prompt_length=$((1024 * 2))  # 2K
-max_response_length=$((1024 * 16))  # 16K
+max_response_length=$((1024 * 8))  # 8K
 enable_overlong_buffer=False
 overlong_buffer_len=16
 overlong_penalty_factor=1.0
-v_max_response_length=$((1024 * 16))  # 16K
+v_max_response_length=$((1024 * 8))  # 8K
 
 # Batch sizes
-# train_prompt_bsz=32
-# gen_prompt_bsz=$((train_prompt_bsz * 1))
-# train_prompt_mini_bsz=16
 train_prompt_bsz=64
 gen_prompt_bsz=$((train_prompt_bsz * 1))
 train_prompt_mini_bsz=32
-
 
 # Paths
 MODEL_PATH=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
@@ -43,6 +39,9 @@ CKPTS_DIR=./output/${project_name}/${exp_name}
 data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
 TEST_FILE=$data_dir/test/livecodebench_v5.json
+
+# Resume from Intuitor checkpoint
+INTUITOR_CHECKPOINT_PATH=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/global_step_90
 
 # Response generation
 n_resp_per_prompt=16
@@ -75,7 +74,7 @@ high_entropy_clip_ratio_high=0.5
 # Trainer
 use_overlong_filter=False
 
-echo "🚀 CONFIGURATION:"
+echo "🚀 CONFIGURATION (GRPO FROM INTUITOR CHECKPOINT):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
@@ -83,6 +82,9 @@ echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
 echo "⚡ Tensor parallel: ${gen_tp}"
 echo "🎯 Total tokens per batch: $((train_prompt_bsz * n_resp_per_prompt * v_max_response_length))"
+echo "❌ KL Loss: DISABLED"
+echo "🔄 Resume from: ${INTUITOR_CHECKPOINT_PATH}"
+echo "🎯 Algorithm: Switching from Intuitor to GRPO"
 
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
@@ -123,7 +125,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${actor_ppo_max_token_len} \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
-    actor_rollout_ref.model.path="${MODEL_PATH}" \
+    actor_rollout_ref.model.path="${INTUITOR_CHECKPOINT_PATH}/actor" \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
@@ -168,7 +170,8 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.save_freq=10 \
     trainer.total_epochs=10 \
     trainer.default_local_dir="${CKPTS_DIR}" \
-    trainer.resume_mode=auto \
+    trainer.resume_mode=resume_path \
+    trainer.resume_from_path="${INTUITOR_CHECKPOINT_PATH}" \
     +trainer.max_actor_ckpt_to_keep=2 \
     +trainer.max_critic_ckpt_to_keep=2 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \

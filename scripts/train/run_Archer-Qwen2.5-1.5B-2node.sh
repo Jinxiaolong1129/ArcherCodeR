@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-export HF_TOKEN=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
-export WANDB_API_KEY=5c271ef60b4c4753def92be733cf80487f0c7e78
+# 导入环境变量
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+    echo "Loaded environment variables from .env"
+    echo "Your WANDB_API_KEY is: $WANDB_API_KEY"
+    echo "Your HF_TOKEN is: $HF_TOKEN"
+else
+    echo "Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
+fi
 
 nnodes=2
 
@@ -156,8 +163,8 @@ mkdir ${CKPTS_DIR}
     trainer.total_epochs=10 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
-    +trainer.max_actor_ckpt_to_keep=3 \
-    +trainer.max_critic_ckpt_to_keep=3 \
+    +trainer.max_actor_ckpt_to_keep=2 \
+    +trainer.max_critic_ckpt_to_keep=2 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
     +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log

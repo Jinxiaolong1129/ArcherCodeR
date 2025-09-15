@@ -14,8 +14,15 @@
 #SBATCH --error=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-16K-16resp/slurm_error_%j.txt
 #SBATCH --job-name=archer-qwen2.5-1.5b-2k-16k-16resp
 
-export HF_TOKEN=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
-export WANDB_API_KEY=5c271ef60b4c4753def92be733cf80487f0c7e78
+# 导入环境变量
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+    echo "Loaded environment variables from .env"
+    echo "Your WANDB_API_KEY is: $WANDB_API_KEY"
+    echo "Your HF_TOKEN is: $HF_TOKEN"
+else
+    echo "Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
+fi
 
 # Clear Ray environment variables to force local cluster creation
 unset RAY_ADDRESS
