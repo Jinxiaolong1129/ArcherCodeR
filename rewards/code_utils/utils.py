@@ -33,8 +33,18 @@ def code_exec(code, stdin: str = None, timeout=30):
     env = os.environ.copy()
     env["OPENBLAS_NUM_THREADS"] = "1"
     env = {k: v for k, v in env.items() if not k.startswith("KML")}
-
-    command = ["prlimit", "--as=1073741824", "--"]
+    
+    # Add Python recursion limit to prevent stack overflow
+    env["PYTHONRECURSIONLIMIT"] = "1000"
+    
+    # Enhanced resource limits to prevent infinite recursion and memory issues
+    command = [
+        "prlimit", 
+        "--as=1073741824",      # 1GB virtual memory limit
+        "--stack=8388608",      # 8MB stack limit  
+        "--cpu=60",             # 60 second CPU time limit
+        "--"
+    ]
     try:
         with TemporaryDirectory() as tmpdir:
             with NamedTemporaryFile(dir="/tmp", suffix=".py") as tmp:
@@ -55,8 +65,18 @@ def code_exec(code, stdin: str = None, timeout=30):
         if result.returncode == 0:
             return True, stdout
         return False, _ERROR_MSG_PREFIX + f"STDOUT:\n{stdout}\n\nSTDERR:\n{stderr}"
+    except subprocess.TimeoutExpired:
+        return False, _ERROR_MSG_PREFIX + "Code execution timeout (possible infinite loop or recursion)"
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode() if e.stderr else ""
+        stdout = e.stdout.decode() if e.stdout else ""
+        if "RecursionError" in stderr or "maximum recursion depth" in stderr:
+            return False, _ERROR_MSG_PREFIX + "RecursionError: Maximum recursion depth exceeded"
+        elif "MemoryError" in stderr:
+            return False, _ERROR_MSG_PREFIX + "MemoryError: Out of memory (possible infinite recursion)"
+        return False, _ERROR_MSG_PREFIX + f"STDOUT:\n{stdout}\n\nSTDERR:\n{stderr}"
     except Exception as e:
-        return False, _ERROR_MSG_PREFIX + "subprocess.TimeoutExpired"
+        return False, _ERROR_MSG_PREFIX + f"Unexpected error: {str(e)}"
 
 
 def remote_check_stdio(code, stdin, stdout):

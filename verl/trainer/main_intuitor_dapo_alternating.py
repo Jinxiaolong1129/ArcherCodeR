@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 """
-Main entry point for alternating algorithm training.
+Main entry point for Intuitor-DAPO alternating training.
 
-This module provides a unified interface for training with dynamic algorithm switching
-between different advantage estimators (e.g., Intuitor and GRPO) without process restart.
+This module provides alternating training between:
+1. Intuitor algorithm (self-certainty based rewards)
+2. DAPO training methodology (rejection sampling + external rewards)
 """
 
 import hydra
 import ray
 from omegaconf import DictConfig, OmegaConf
 
-from verl.trainer.ppo.enhanced_alternating_trainer import EnhancedAlternatingRayPPOTrainer, EnhancedAlternatingConfig
+from verl.trainer.ppo.intuitor_dapo_alternating_trainer import IntuitorDAPOAlternatingTrainer, IntuitorDAPOAlternatingConfig
 
 
 @hydra.main(config_path="config", config_name="ppo_trainer", version_base=None)
 def main(config: DictConfig):
-    """Main entry point for alternating training"""
-    run_alternating_ppo(config)
+    """Main entry point for Intuitor-DAPO alternating training"""
+    run_intuitor_dapo_alternating(config)
 
 
-def run_alternating_ppo(config: DictConfig) -> None:
-    """Run alternating PPO training with dynamic algorithm switching"""
+def run_intuitor_dapo_alternating(config: DictConfig) -> None:
+    """Run Intuitor-DAPO alternating training"""
     
     # Initialize Ray if not already initialized
     if not ray.is_initialized():
@@ -37,7 +38,7 @@ def run_alternating_ppo(config: DictConfig) -> None:
         )
 
     # Create remote task runner
-    runner = AlternatingTaskRunner.remote()
+    runner = IntuitorDAPOTaskRunner.remote()
     ray.get(runner.run.remote(config))
 
     # Optional timeline trace
@@ -47,16 +48,16 @@ def run_alternating_ppo(config: DictConfig) -> None:
 
 
 @ray.remote(num_cpus=1)
-class AlternatingTaskRunner:
-    """Remote task runner for alternating training"""
+class IntuitorDAPOTaskRunner:
+    """Remote task runner for Intuitor-DAPO alternating training"""
     
     def run(self, config: DictConfig):
-        """Execute the alternating training process"""
+        """Execute the Intuitor-DAPO alternating training process"""
         from pprint import pprint
         from verl.utils.fs import copy_to_local
         from verl.utils import hf_processor, hf_tokenizer
         
-        print("🎯 AlternatingTaskRunner started!")
+        print("🎯 IntuitorDAPOTaskRunner started!")
         print("=" * 80)
         
         # Print and resolve configuration
@@ -165,10 +166,10 @@ class AlternatingTaskRunner:
         val_dataset = create_rl_dataset(config.data.val_files, config.data, tokenizer, processor)
         train_sampler = create_rl_sampler(config.data, train_dataset)
         
-        print("🎯 Initializing EnhancedAlternatingRayPPOTrainer...")
+        print("🎯 Initializing IntuitorDAPOAlternatingTrainer...")
         
-        # Initialize the enhanced alternating trainer
-        trainer = EnhancedAlternatingRayPPOTrainer(
+        # Initialize the Intuitor-DAPO alternating trainer
+        trainer = IntuitorDAPOAlternatingTrainer(
             config=config,
             tokenizer=tokenizer,
             processor=processor,
@@ -188,7 +189,7 @@ class AlternatingTaskRunner:
         # Initialize workers
         trainer.init_workers()
         
-        print("🚀 Starting alternating training...")
+        print("🚀 Starting Intuitor-DAPO alternating training...")
         
         # Start training
         trainer.fit()
@@ -198,53 +199,31 @@ class AlternatingTaskRunner:
         print("\n📊 Final Training Summary:")
         print(f"   🏁 Total steps: {summary['total_steps']}")
         print(f"   📈 Total phases: {summary['total_phases']}")
-        print(f"   🎯 Final algorithm: {summary['current_algorithm']}")
+        print(f"   🎯 Final mode: {summary['current_mode']}")
         
-        print("✅ Alternating training completed successfully!")
+        print("✅ Intuitor-DAPO alternating training completed successfully!")
     
-    def _extract_alternating_config(self, config: DictConfig) -> EnhancedAlternatingConfig:
+    def _extract_alternating_config(self, config: DictConfig) -> IntuitorDAPOAlternatingConfig:
         """Extract alternating configuration from main config"""
         
         # Get alternating config from config or use defaults
         alt_config = config.get("alternating", {})
         
-        algorithms = alt_config.get("algorithms", ["intuitor", "grpo"])
+        modes = alt_config.get("modes", ["intuitor", "dapo"])
         steps_per_phase = alt_config.get("steps_per_phase", 50)
-        start_algorithm = alt_config.get("start_algorithm", "intuitor")
-        kl_mode = alt_config.get("kl_mode", "no-kl")
-        test_mode = alt_config.get("test_mode", False)
+        start_mode = alt_config.get("start_mode", "intuitor")
         
-        # Validate that start_algorithm is in the original config
-        # This ensures compatibility with the base trainer
-        original_algo = config.algorithm.adv_estimator
-        if isinstance(original_algo, str):
-            original_algo = original_algo
-        else:
-            original_algo = str(original_algo)
+        # DAPO specific settings
+        dapo_rejection_sample = alt_config.get("dapo_rejection_sample", True)
+        dapo_enable_overlong_filter = alt_config.get("dapo_enable_overlong_filter", True)
         
-        # If start_algorithm is not specified, use the original algorithm
-        if start_algorithm not in algorithms and original_algo in algorithms:
-            start_algorithm = original_algo
-        
-        # Extract algorithm-specific configs if available
-        algorithm_configs = alt_config.get("algorithm_configs", {})
-        kl_configs = alt_config.get("kl_configs", {})
-        
-        # Override steps_per_phase for test mode
-        if test_mode:
-            steps_per_phase = 1
-            print(f"🧪 Test mode: Overriding steps_per_phase to 1")
-        
-        return EnhancedAlternatingConfig(
-            algorithms=algorithms,
+        return IntuitorDAPOAlternatingConfig(
+            modes=modes,
             steps_per_phase=steps_per_phase,
-            start_algorithm=start_algorithm,
-            algorithm_configs=algorithm_configs,
-            kl_mode=kl_mode,
-            kl_configs=kl_configs,
-            test_mode=test_mode,
+            start_mode=start_mode,
+            dapo_rejection_sample=dapo_rejection_sample,
+            dapo_enable_overlong_filter=dapo_enable_overlong_filter,
         )
-    
 
 
 if __name__ == "__main__":

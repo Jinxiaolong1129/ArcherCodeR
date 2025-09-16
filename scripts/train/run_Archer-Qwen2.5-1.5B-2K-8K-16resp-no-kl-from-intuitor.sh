@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
+# 导入环境变量
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+    echo -e "✅ Loaded environment variables from .env$"
+    echo -e "🔑 WANDB_API_KEY: ${WANDB_API_KEY:0:8}...$"
+    echo -e "🔑 HF_TOKEN: ${HF_TOKEN:0:8}...$"
+else
+    echo -e "⚠️  Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
+fi
+
+
+
 nnodes=1
 
 project_name='ArcherCodeR'
@@ -89,7 +101,18 @@ echo "🎯 Algorithm: Switching from Intuitor to GRPO"
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m dapo.main_dapo \
+# Set Python recursion limit to prevent stack overflow
+export PYTHONRECURSIONLIMIT=1000
+
+# Add system limits to prevent excessive resource usage
+ulimit -s 8192      # 8MB stack size limit
+ulimit -v 16777216  # 16GB virtual memory limit
+ulimit -t 3600      # 1 hour CPU time limit per process
+
+# Set additional Python safety measures
+export PYTHONHASHSEED=0
+
+/home/ec2-user/miniconda3/envs/archer/bin/python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -125,7 +148,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${actor_ppo_max_token_len} \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
-    actor_rollout_ref.model.path="${INTUITOR_CHECKPOINT_PATH}/actor" \
+    actor_rollout_ref.model.path="${INTUITOR_CHECKPOINT_PATH}/actor_hf" \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \

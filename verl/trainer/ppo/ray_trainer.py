@@ -928,6 +928,7 @@ class RayPPOTrainer:
                 return 0
         else:
             if self.config.trainer.resume_mode == "resume_path":
+                print(f"🚀🚀🚀🚀🚀🚀 Resuming from {self.config.trainer.resume_from_path}")
                 assert isinstance(self.config.trainer.resume_from_path, str), "resume ckpt must be str type"
                 assert "global_step_" in self.config.trainer.resume_from_path, "resume ckpt must specify the global_steps"
                 global_step_folder = self.config.trainer.resume_from_path
@@ -945,10 +946,12 @@ class RayPPOTrainer:
         critic_path = os.path.join(global_step_folder, "critic")
         # load actor
         self.actor_rollout_wg.load_checkpoint(actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
+        print(f"✅ Actor loaded from {actor_path}")
         # load critic
         if self.use_critic:
             self.critic_wg.load_checkpoint(critic_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
-
+            print(f"✅ Critic loaded from {critic_path}")
+            
         # load dataloader,
         # TODO: from remote not implemented yet
         dataloader_local_path = os.path.join(global_step_folder, "data.pt")

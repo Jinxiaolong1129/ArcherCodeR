@@ -29,8 +29,98 @@ alternating:
   algorithms: ["intuitor", "grpo"]
   steps_per_phase: 50
   start_algorithm: "intuitor"
+  kl_mode: "no-kl"  # Options: no-kl, kl005, kl01, kl02, kl05
+  test_mode: false
   
   # 算法特定配置 - 基于官方脚本
+  # KL模式配置 - 会根据kl_mode动态应用
+  kl_configs:
+    no-kl:
+      intuitor:
+        actor:
+          use_kl_loss: false
+          kl_loss_coef: 0.0
+        algorithm:
+          use_kl_in_reward: false
+          kl_ctrl:
+            kl_coef: 0.0
+      grpo:
+        actor:
+          use_kl_loss: false
+          kl_loss_coef: 0.0
+        algorithm:
+          use_kl_in_reward: false
+          kl_ctrl:
+            kl_coef: 0.0
+    kl005:
+      intuitor:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.05
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.05
+      grpo:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.05
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.05
+    kl01:
+      intuitor:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.1
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.1
+      grpo:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.1
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.1
+    kl02:
+      intuitor:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.2
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.2
+      grpo:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.2
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.2
+    kl05:
+      intuitor:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.5
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.5
+      grpo:
+        actor:
+          use_kl_loss: true
+          kl_loss_coef: 0.5
+        algorithm:
+          use_kl_in_reward: true
+          kl_ctrl:
+            kl_coef: 0.5
+  
   algorithm_configs:
     intuitor:
       # 基于 intuitor_Qwen-1.5B-2k-8k-8k-batch64-no-kl-simple_ray.sh
@@ -179,6 +269,9 @@ actor_rollout_ref:
     top_p: 1.0
     top_k: -1
     n: 16
+    # 添加必需的 log_prob 配置
+    log_prob_micro_batch_size_per_gpu: 1  # 默认值，会被算法特定配置覆盖
+    log_prob_max_token_len_per_gpu: 10240  # 默认值，会被算法特定配置覆盖
     val_kwargs:
       n: 4
       do_sample: true
@@ -212,6 +305,7 @@ data:
   filter_overlong_prompts: true
   truncation: 'error'
   reward_fn_key: data_source
+  dataset_limit: null           # Limit dataset size for testing (null = no limit)
 
 # 奖励模型配置 - 与官方脚本一致
 reward_model:

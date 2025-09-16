@@ -139,6 +139,13 @@ class RLHFDataset(Dataset):
         self.dataframe = pd.concat(dataframes)
 
         print(f'dataset len: {len(self.dataframe)}')
+        
+        # Apply dataset limit if specified
+        dataset_limit = self.config.get("dataset_limit", None)
+        if dataset_limit is not None and dataset_limit > 0:
+            original_len = len(self.dataframe)
+            self.dataframe = self.dataframe.head(dataset_limit)
+            print(f'Applied dataset limit: {original_len} -> {len(self.dataframe)} samples')
 
         # filter out too long prompts
         if self.filter_overlong_prompts:

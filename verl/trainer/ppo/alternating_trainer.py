@@ -16,7 +16,7 @@ from torch.utils.data import Dataset, Sampler
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer, ResourcePoolManager, Role, WorkerType
 from verl.trainer.ppo.core_algos import AdvantageEstimator
 from verl.single_controller.ray import RayWorkerGroup
-from verl.utils.data_structure import DataProto
+from verl import DataProto
 
 
 @dataclass
@@ -183,7 +183,17 @@ class AlternatingRayPPOTrainer(RayPPOTrainer):
         print(f"🚀 Starting Phase {self.current_phase} with {self.current_algorithm}")
     
     def _compute_advantage_with_current_algorithm(self, batch: DataProto) -> DataProto:
-        """Compute advantages using the current algorithm"""
+        """Compute advantages using the current algorithm with automatic switching"""
+        # Check if we should switch algorithms before computing advantages
+        if self._should_switch_algorithm():
+            self._start_new_phase()
+        
+        # Increment step counter
+        self.steps_in_current_phase += 1
+        self.training_step_count += 1
+        
+        print(f"🧮 Computing advantages with {self.current_algorithm} (Step {self.steps_in_current_phase}/{self.alternating_config.steps_per_phase} in phase {self.current_phase})")
+        
         from verl.trainer.ppo.ray_trainer import compute_advantage
         
         # Use the current algorithm for advantage computation
@@ -201,58 +211,45 @@ class AlternatingRayPPOTrainer(RayPPOTrainer):
     def fit(self):
         """Main training loop with algorithm alternating"""
         print(f"🚀 Starting alternating training with {len(self.alternating_config.algorithms)} algorithms")
+        print(f"   📋 Algorithms: {self.alternating_config.algorithms}")
+        print(f"   🎯 Starting with: {self.current_algorithm}")
+        print(f"   📊 Steps per phase: {self.alternating_config.steps_per_phase}")
         
-        # Initialize training
-        self._init_training()
+        # Store original compute_advantage function
+        from verl.trainer.ppo import ray_trainer
+        original_compute_advantage = ray_trainer.compute_advantage
         
-        # Main training loop
-        for epoch in range(self.config.trainer.total_epochs):
-            print(f"\n🔄 Epoch {epoch + 1}/{self.config.trainer.total_epochs}")
-            print(f"   🎯 Current algorithm: {self.current_algorithm}")
-            print(f"   📊 Phase: {self.current_phase}, Steps in phase: {self.steps_in_current_phase}")
+        # Create our alternating wrapper
+        def alternating_compute_advantage(*args, **kwargs):
+            # Check if we should switch algorithms before computing advantages
+            if self._should_switch_algorithm():
+                self._start_new_phase()
             
-            # Run one epoch
-            for batch_idx, batch in enumerate(self.train_dataloader):
-                # Check if we should switch algorithms
-                if self._should_switch_algorithm():
-                    self._start_new_phase()
-                
-                # Process batch with current algorithm
-                batch = self._compute_advantage_with_current_algorithm(batch)
-                
-                # Run PPO update
-                metrics = self._ppo_update(batch)
-                
-                # Update counters
-                self.steps_in_current_phase += 1
-                self.global_steps += 1
-                
-                # Log metrics with algorithm info
-                metrics = self._log_alternating_metrics(metrics)
-                
-                # Log metrics
-                if self.logger is not None:
-                    self.logger.log(metrics, step=self.global_steps)
-                
-                # Validation and checkpointing
-                if self._should_validate():
-                    self._run_validation()
-                
-                if self._should_save_checkpoint():
-                    self._save_checkpoint()
+            # Increment step counter
+            self.steps_in_current_phase += 1
+            
+            print(f"🧮 Computing advantages with {self.current_algorithm} (Step {self.steps_in_current_phase}/{self.alternating_config.steps_per_phase} in phase {self.current_phase})")
+            
+            # Call original function with current algorithm settings
+            return original_compute_advantage(*args, **kwargs)
         
-        # Final phase summary
-        if self.steps_in_current_phase > 0:
-            self._start_new_phase()
+        # Monkey patch the function
+        ray_trainer.compute_advantage = alternating_compute_advantage
         
-        print("✅ Alternating training completed!")
+        try:
+            # Call parent's fit method
+            super().fit()
+        finally:
+            # Restore original function
+            ray_trainer.compute_advantage = original_compute_advantage
         
         # Print final summary
         summary = self.get_phase_summary()
-        print(f"\n📊 Final Summary:")
+        print(f"\n📊 Alternating Training Summary:")
         print(f"   🏁 Total steps: {summary['total_steps']}")
         print(f"   📈 Total phases: {summary['total_phases']}")
         print(f"   🎯 Final algorithm: {summary['current_algorithm']}")
+        print("✅ Alternating training completed!")
     
     def _log_alternating_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
         """Add alternating-specific metrics to the log"""
@@ -285,19 +282,25 @@ class AlternatingRayPPOTrainer(RayPPOTrainer):
     # Helper methods that need to be implemented based on parent class
     def _init_training(self):
         """Initialize training (placeholder - implement based on parent)"""
+        # This is handled by the parent class's fit() method
         pass
     
     def _ppo_update(self, batch):
         """Run PPO update (placeholder - implement based on parent)"""
+        # This would be handled by the parent class's training loop
         return {}
     
     def _should_validate(self) -> bool:
-        """Check if validation should be run (placeholder)"""
-        return False
+        """Check if validation should be run"""
+        if self.val_reward_fn is None:
+            return False
+        if self.config.trainer.test_freq <= 0:
+            return False
+        return self.global_steps % self.config.trainer.test_freq == 0
     
     def _run_validation(self):
-        """Run validation (placeholder)"""
-        pass
+        """Run validation"""
+        return self._validate()
     
     def _should_save_checkpoint(self) -> bool:
         """Check if checkpoint should be saved"""

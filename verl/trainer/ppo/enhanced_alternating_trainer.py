@@ -17,13 +17,16 @@ from verl.trainer.ppo.alternating_trainer import AlternatingRayPPOTrainer, Alter
 from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role, WorkerType
 from verl.trainer.ppo.core_algos import AdvantageEstimator
 from verl.single_controller.ray import RayWorkerGroup
-from verl.utils.data_structure import DataProto
+from verl import DataProto
 
 
 @dataclass
 class EnhancedAlternatingConfig(AlternatingConfig):
     """Enhanced configuration with algorithm-specific parameters"""
     algorithm_configs: Optional[Dict[str, Dict[str, Any]]] = None
+    kl_mode: str = "no-kl"  # KL loss mode: no-kl, kl005, kl01, kl02, kl05
+    kl_configs: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
+    test_mode: bool = False
     
     def __post_init__(self):
         super().__post_init__()
@@ -31,6 +34,10 @@ class EnhancedAlternatingConfig(AlternatingConfig):
         # Initialize algorithm_configs if not provided
         if self.algorithm_configs is None:
             self.algorithm_configs = {}
+        
+        # Initialize kl_configs if not provided
+        if self.kl_configs is None:
+            self.kl_configs = {}
         
         # Ensure all algorithms have configs
         for algo in self.algorithms:
@@ -95,6 +102,9 @@ class EnhancedAlternatingRayPPOTrainer(AlternatingRayPPOTrainer):
         
         print(f"🎯 EnhancedAlternatingRayPPOTrainer initialized")
         print(f"   📋 Algorithm-specific configs available: {list(self.alternating_config.algorithm_configs.keys())}")
+        print(f"   🔧 KL mode: {self.alternating_config.kl_mode}")
+        if self.alternating_config.test_mode:
+            print(f"   🧪 Test mode enabled: 1-step switching")
     
     def _get_default_algorithm_configs(self) -> Dict[str, Dict[str, Any]]:
         """Get default algorithm-specific configurations based on official scripts"""
@@ -203,8 +213,11 @@ class EnhancedAlternatingRayPPOTrainer(AlternatingRayPPOTrainer):
             print(f"⚠️  No specific config for {algorithm}, using defaults")
             return
         
-        algo_config = self.alternating_config.algorithm_configs[algorithm]
+        algo_config = copy.deepcopy(self.alternating_config.algorithm_configs[algorithm])
         print(f"🔧 Applying {algorithm}-specific configuration...")
+        
+        # Apply KL configuration first
+        self._apply_kl_config(algorithm, algo_config)
         
         # Apply actor configuration
         if "actor" in algo_config:
@@ -223,6 +236,34 @@ class EnhancedAlternatingRayPPOTrainer(AlternatingRayPPOTrainer):
         
         # Log key parameter changes
         self._log_parameter_changes(algorithm, algo_config)
+    
+    def _apply_kl_config(self, algorithm: str, algo_config: Dict[str, Any]):
+        """Apply KL-specific configuration based on kl_mode"""
+        kl_mode = self.alternating_config.kl_mode
+        
+        if (kl_mode in self.alternating_config.kl_configs and 
+            algorithm in self.alternating_config.kl_configs[kl_mode]):
+            
+            kl_config = self.alternating_config.kl_configs[kl_mode][algorithm]
+            print(f"   🔧 Applying KL config ({kl_mode}) for {algorithm}")
+            
+            # Merge KL config into algorithm config
+            self._deep_merge_config(algo_config, kl_config)
+            
+            # Log KL parameters
+            if "actor" in kl_config and "kl_loss_coef" in kl_config["actor"]:
+                kl_coef = kl_config["actor"]["kl_loss_coef"]
+                print(f"   📊 KL coefficient: {kl_coef}")
+        else:
+            print(f"   ⚠️  No KL config for {algorithm} in mode {kl_mode}")
+    
+    def _deep_merge_config(self, target: Dict[str, Any], source: Dict[str, Any]):
+        """Deep merge source config into target config"""
+        for key, value in source.items():
+            if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+                self._deep_merge_config(target[key], value)
+            else:
+                target[key] = value
     
     def _apply_nested_config(self, target_config, source_config):
         """Recursively apply configuration changes"""

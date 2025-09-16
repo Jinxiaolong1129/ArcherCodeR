@@ -56,7 +56,7 @@ def postprocess_lcb_sample(sample):
 def lcb_check_correctness(sample, generation, timeout=150, debug=False):
     """Check correctness of code generation with a global timeout.
     The global timeout is to catch some extreme/rare cases not handled by the timeouts
-    inside `run_test`"""
+    inside `run_test`, including infinite recursion and memory issues."""
     assert len(sample) >= 1, "Sample must contain at least one test case"
     sample = postprocess_lcb_sample(sample)
 
@@ -78,7 +78,11 @@ def lcb_check_correctness(sample, generation, timeout=150, debug=False):
         timeout=(timeout + 1) * len(json.loads(sample["input_output"])["inputs"]) + 5
     )
     if p.is_alive():
-        p.kill()
+        # Force terminate the process if it's still running (likely infinite recursion)
+        p.terminate()
+        p.join(timeout=5)  # Give it 5 seconds to terminate gracefully
+        if p.is_alive():
+            p.kill()  # Force kill if it still won't terminate
     if not result:
         in_outs = json.loads(sample["input_output"])
         # consider that all tests failed

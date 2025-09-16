@@ -1,0 +1,253 @@
+# 测试配置 - 快速验证交替训练功能
+# 1步切换，限制数据集，快速测试
+
+defaults:
+  - alternating_official  # 继承主配置
+  - _self_               # 确保当前配置优先级最高
+
+# 实验配置 - 测试模式
+trainer:
+  experiment_name: alternating_test
+  project_name: ArcherCodeR-Test
+  logger: ['console', 'wandb']
+  n_gpus_per_node: 8
+  nnodes: 1
+  balance_batch: false
+  val_before_train: false
+  test_freq: 5           # 更频繁的测试
+  save_freq: 5           # 更频繁的保存
+  total_epochs: 2        # 限制epoch数量
+  resume_mode: auto
+  critic_warmup: 0
+  max_actor_ckpt_to_keep: 1  # 减少保存的检查点
+  max_critic_ckpt_to_keep: 1
+  enable_overlong_filter: false
+  rejection_sample: true
+
+# 交替训练配置 - 测试模式
+alternating:
+  algorithms: ["intuitor", "grpo"]
+  steps_per_phase: 1     # 每步切换算法
+  start_algorithm: "intuitor"
+  kl_mode: "no-kl"       # 测试时使用no-kl模式
+  test_mode: true        # 启用测试模式
+  
+  # KL配置继承自主配置
+  kl_configs:
+    no-kl:
+      intuitor:
+        actor:
+          use_kl_loss: false
+          kl_loss_coef: 0.0
+        algorithm:
+          use_kl_in_reward: false
+          kl_ctrl:
+            kl_coef: 0.0
+      grpo:
+        actor:
+          use_kl_loss: false
+          kl_loss_coef: 0.0
+        algorithm:
+          use_kl_in_reward: false
+          kl_ctrl:
+            kl_coef: 0.0
+  
+  # 算法特定配置 - 简化版本用于测试
+  algorithm_configs:
+    intuitor:
+      model:
+        use_fused_kernels: false
+      actor:
+        optim:
+          lr: 3e-6
+          warmup_style: cosine
+          lr_warmup_steps_ratio: 0.1
+          weight_decay: 0.1
+        ppo_epochs: 1
+        ppo_mini_batch_size: 16    # 减少batch size加速测试
+        ppo_micro_batch_size_per_gpu: 1
+        entropy_coeff: 0
+        use_kl_loss: false
+        grad_clip: 1.0
+        fsdp_config:
+          param_offload: false
+          optimizer_offload: false
+        use_dynamic_bsz: false
+        ppo_max_token_len_per_gpu: 4096  # 减少token长度
+      rollout:
+        name: vllm
+        gpu_memory_utilization: 0.8
+        tensor_model_parallel_size: 2
+        enable_chunked_prefill: false
+        temperature: 1.0
+        top_p: 1.0
+        top_k: -1
+        n: 8                       # 减少响应数量
+        max_model_len: 4096        # 减少模型长度
+        max_num_batched_tokens: 4096
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 4096
+        val_kwargs:
+          n: 2                     # 减少验证响应数量
+          do_sample: true
+          temperature: 0.8
+          top_p: 1.0
+          top_k: -1
+          response_length: 2048    # 减少响应长度
+      ref:
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 4096
+        fsdp_config:
+          param_offload: true
+      algorithm:
+        use_kl_in_reward: false
+        
+    grpo:
+      actor:
+        optim:
+          lr: 1e-6
+          lr_warmup_steps: 5       # 减少预热步数
+          weight_decay: 0.1
+        ppo_epochs: 2              # 减少PPO epochs
+        ppo_mini_batch_size: 16    # 减少batch size
+        ppo_micro_batch_size_per_gpu: 1
+        entropy_coeff: 0
+        use_kl_loss: false
+        kl_loss_coef: 0.0
+        kl_loss_type: low_var_kl
+        grad_clip: 1.0
+        clip_ratio_low: 0.2
+        clip_ratio_high: 0.2
+        clip_ratio_c: 10.0
+        loss_agg_mode: token-mean
+        use_token_entropy_separate: true
+        high_entropy_kl_loss_scale_coef: 0.0
+        low_entropy_clip_ratio_low: 0.2
+        low_entropy_clip_ratio_high: 0.2
+        high_entropy_clip_ratio_low: 0.5
+        high_entropy_clip_ratio_high: 0.5
+        fsdp_config:
+          param_offload: false
+          optimizer_offload: false
+          fsdp_size: -1
+        use_dynamic_bsz: false
+        ppo_max_token_len_per_gpu: 4096  # 减少token长度
+        ulysses_sequence_parallel_size: 1
+      rollout:
+        name: vllm
+        gpu_memory_utilization: 0.75
+        tensor_model_parallel_size: 2
+        enable_chunked_prefill: true
+        temperature: 1.0
+        top_p: 1.0
+        top_k: -1
+        n: 8                       # 减少响应数量
+        max_model_len: 4096        # 减少模型长度
+        max_num_batched_tokens: 4096
+        log_prob_use_dynamic_bsz: false
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 4096
+        val_kwargs:
+          n: 2                     # 减少验证响应数量
+          do_sample: true
+          temperature: 0.8
+          top_p: 1.0
+          top_k: -1
+          response_length: 2048    # 减少响应长度
+      ref:
+        log_prob_use_dynamic_bsz: false
+        log_prob_micro_batch_size_per_gpu: 1
+        log_prob_max_token_len_per_gpu: 4096
+        fsdp_config:
+          param_offload: false
+        ulysses_sequence_parallel_size: 1
+      algorithm:
+        use_kl_in_reward: false
+        kl_ctrl:
+          kl_coef: 0.0
+        norm_adv_by_std_in_grpo: true
+
+# 基础模型配置 - 测试版本
+actor_rollout_ref:
+  model:
+    path: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+    enable_gradient_checkpointing: true
+    use_remove_padding: true
+    
+  actor:
+    strategy: fsdp
+    optim:
+      lr: 1e-6
+      weight_decay: 0.1
+    ppo_mini_batch_size: 16      # 减少batch size
+    ppo_micro_batch_size_per_gpu: 1
+    grad_clip: 1.0
+    fsdp_config:
+      param_offload: false
+      optimizer_offload: false
+      
+  rollout:
+    name: vllm
+    gpu_memory_utilization: 0.75
+    tensor_model_parallel_size: 2
+    enable_chunked_prefill: true
+    max_model_len: 4096          # 减少模型长度
+    max_num_batched_tokens: 4096
+    temperature: 1.0
+    top_p: 1.0
+    top_k: -1
+    n: 8                         # 减少响应数量
+    log_prob_micro_batch_size_per_gpu: 1
+    log_prob_max_token_len_per_gpu: 4096
+    val_kwargs:
+      n: 2                       # 减少验证响应数量
+      do_sample: true
+      temperature: 0.8
+      top_p: 1.0
+      top_k: -1
+      response_length: 2048      # 减少响应长度
+
+# 算法配置
+algorithm:
+  adv_estimator: intuitor
+  gamma: 1.0
+  lam: 1.0
+  use_kl_in_reward: false
+  norm_adv_by_std_in_grpo: true
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.0
+    horizon: 10000
+    target_kl: 0.1
+
+# 数据配置 - 测试版本
+data:
+  train_files: ./data/train/archercoder-1.5b-train.json
+  val_files: ./data/test/livecodebench_v5.json
+  prompt_key: prompt
+  train_batch_size: 32           # 减少batch size
+  gen_batch_size: 32             # 减少batch size
+  max_prompt_length: 1024        # 减少prompt长度
+  max_response_length: 2048      # 减少响应长度
+  filter_overlong_prompts: true
+  truncation: 'error'
+  reward_fn_key: data_source
+  dataset_limit: 1000            # 限制数据集大小
+
+# 奖励模型配置
+reward_model:
+  enable: false
+  reward_manager: wizard
+  overlong_buffer:
+    enable: false
+    len: 16
+    penalty_factor: 1.0
+
+# Critic配置
+critic:
+  enable: null
+  strategy: fsdp
+
+# Ray配置
+ray_init:
+  num_cpus: null

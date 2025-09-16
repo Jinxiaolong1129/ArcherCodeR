@@ -22,6 +22,12 @@ from verl import DataProto
 from verl.utils.reward_score import default_compute_score
 
 
+# Global dummy reward function for Intuitor (to avoid pickle issues)
+def _intuitor_dummy_reward_fn(data_source: str, solution_str: str, ground_truth, extra_info=None, enable_llm=False, is_eval=False):
+    """Dummy reward function for Intuitor training - returns 0.0 since Intuitor uses self-certainty"""
+    return 0.0
+
+
 def get_custom_reward_fn(config):
     import importlib.util
     import sys
@@ -97,9 +103,7 @@ def load_reward_manager(config, tokenizer, num_examine=0, for_validation=False, 
         else:
             # For training, use dummy reward since Intuitor uses self-certainty
             print("🎯 Loading dummy reward function for Intuitor training (uses self-certainty)")
-            def dummy_reward_fn(data_source: str, solution_str: str, ground_truth, extra_info=None, enable_llm=False, is_eval=False):
-                return 0.0
-            final_compute_score = dummy_reward_fn
+            final_compute_score = _intuitor_dummy_reward_fn
     elif use_general_reward:
         # Use rewards/general_reward.py like DAPO does
         print("🎯 Loading general_reward_fn from rewards/ package (DAPO-style)")

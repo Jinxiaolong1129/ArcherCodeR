@@ -16,7 +16,11 @@ ALGORITHMS="intuitor,grpo"
 STEPS_PER_PHASE=50
 START_ALGORITHM="intuitor"
 TOTAL_EPOCHS=4
-OUTPUT_DIR="./output/ArcherCodeR/Unified-Alternating-$(date +%Y%m%d-%H%M%S)"
+PROJECT_NAME="ArcherCodeR"
+KL_MODE="no-kl"  # Options: no-kl, kl005, kl01, etc.
+TEST_MODE=false
+DATASET_LIMIT=""
+OUTPUT_DIR=""  # Will be generated based on parameters
 CONFIG_NAME="alternating_official"
 
 # Parse command line arguments
@@ -46,6 +50,22 @@ while [[ $# -gt 0 ]]; do
             CONFIG_NAME="$2"
             shift 2
             ;;
+        --project-name)
+            PROJECT_NAME="$2"
+            shift 2
+            ;;
+        --kl-mode)
+            KL_MODE="$2"
+            shift 2
+            ;;
+        --test-mode)
+            TEST_MODE=true
+            shift
+            ;;
+        --dataset-limit)
+            DATASET_LIMIT="$2"
+            shift 2
+            ;;
         --help|-h)
             echo -e "${GREEN}🚀 Unified Alternating Training Script${NC}"
             echo ""
@@ -58,6 +78,10 @@ while [[ $# -gt 0 ]]; do
             echo "  --total-epochs EPOCHS     Total training epochs (default: 4)"
             echo "  --output-dir DIR          Output directory (default: auto-generated)"
             echo "  --config CONFIG           Config name (default: alternating_official)"
+            echo "  --project-name PROJECT    Wandb project name (default: ArcherCodeR)"
+            echo "  --kl-mode MODE            KL loss mode: no-kl, kl005, kl01 (default: no-kl)"
+            echo "  --test-mode               Enable test mode (1-step switching, limited data)"
+            echo "  --dataset-limit N         Limit dataset to N samples (for testing)"
             echo "  --help, -h                Show this help message"
             echo ""
             echo "Examples:"
@@ -65,6 +89,8 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 --steps-per-phase 25              # 25 steps per phase"
             echo "  $0 --algorithms grpo,intuitor         # Start with GRPO"
             echo "  $0 --start-with grpo --total-epochs 6 # Custom start and epochs"
+            echo "  $0 --kl-mode kl005 --project-name MyProject # With KL loss"
+            echo "  $0 --test-mode --dataset-limit 1000  # Test mode with limited data"
             echo ""
             echo -e "${BLUE}Supported algorithms: intuitor, grpo${NC}"
             exit 0
@@ -93,6 +119,44 @@ if [[ ! " ${ALGO_ARRAY[@]} " =~ " ${START_ALGORITHM} " ]]; then
     exit 1
 fi
 
+# Validate KL mode
+case "$KL_MODE" in
+    no-kl|kl005|kl01|kl02|kl05)
+        ;;
+    *)
+        echo -e "${RED}❌ Unsupported KL mode: $KL_MODE${NC}"
+        echo -e "${BLUE}Supported KL modes: no-kl, kl005, kl01, kl02, kl05${NC}"
+        exit 1
+        ;;
+esac
+
+# Generate output directory if not provided
+if [[ -z "$OUTPUT_DIR" ]]; then
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    ALGO_STR=$(echo "$ALGORITHMS" | tr ',' '-')
+    
+    if [[ "$TEST_MODE" == "true" ]]; then
+        OUTPUT_DIR="./output/${PROJECT_NAME}/Test-${ALGO_STR}-${KL_MODE}-steps${STEPS_PER_PHASE}-${TIMESTAMP}"
+        if [[ -n "$DATASET_LIMIT" ]]; then
+            OUTPUT_DIR="${OUTPUT_DIR}-limit${DATASET_LIMIT}"
+        fi
+    else
+        OUTPUT_DIR="./output/${PROJECT_NAME}/Alternating-${ALGO_STR}-${KL_MODE}-steps${STEPS_PER_PHASE}-epochs${TOTAL_EPOCHS}-${TIMESTAMP}"
+    fi
+fi
+
+# Adjust parameters for test mode
+if [[ "$TEST_MODE" == "true" ]]; then
+    STEPS_PER_PHASE=1  # Switch every step for testing
+    if [[ -z "$DATASET_LIMIT" ]]; then
+        DATASET_LIMIT=1000  # Default limit for test mode
+    fi
+    if [[ "$TOTAL_EPOCHS" -gt 2 ]]; then
+        TOTAL_EPOCHS=2  # Limit epochs in test mode
+    fi
+    echo -e "${YELLOW}🧪 Test mode enabled: 1-step switching, limited to ${DATASET_LIMIT} samples${NC}"
+fi
+
 # Create output directory
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/eval"
@@ -104,14 +168,32 @@ echo -e "📋 Algorithms: ${YELLOW}$ALGORITHMS${NC}"
 echo -e "🔄 Steps per phase: ${YELLOW}$STEPS_PER_PHASE${NC}"
 echo -e "🎯 Starting algorithm: ${YELLOW}$START_ALGORITHM${NC}"
 echo -e "📊 Total epochs: ${YELLOW}$TOTAL_EPOCHS${NC}"
+echo -e "🏷️  Project name: ${YELLOW}$PROJECT_NAME${NC}"
+echo -e "🔧 KL mode: ${YELLOW}$KL_MODE${NC}"
+if [[ "$TEST_MODE" == "true" ]]; then
+    echo -e "🧪 Test mode: ${YELLOW}ENABLED${NC}"
+    if [[ -n "$DATASET_LIMIT" ]]; then
+        echo -e "📊 Dataset limit: ${YELLOW}$DATASET_LIMIT${NC}"
+    fi
+fi
 echo -e "📁 Output directory: ${YELLOW}$OUTPUT_DIR${NC}"
 echo -e "⚙️  Configuration: ${YELLOW}$CONFIG_NAME${NC}"
-echo -e "🐍 Python: ${YELLOW}/data/xuandong_zhao/anaconda3/envs/archer/bin/python${NC}"
+echo -e "🐍 Python: ${YELLOW}/home/ec2-user/miniconda3/envs/archer/bin/python${NC}"
 echo -e "${BLUE}=================================================${NC}"
 
 # Confirm execution
 echo -e "${YELLOW}⏳ Starting training in 3 seconds... (Ctrl+C to cancel)${NC}"
 sleep 3
+
+# 导入环境变量
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+    echo -e "${GREEN}✅ Loaded environment variables from .env${NC}"
+    echo -e "🔑 WANDB_API_KEY: ${YELLOW}${WANDB_API_KEY:0:8}...${NC}"
+    echo -e "🔑 HF_TOKEN: ${YELLOW}${HF_TOKEN:0:8}...${NC}"
+else
+    echo -e "${YELLOW}⚠️  Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN${NC}"
+fi
 
 # Set environment variables
 export PYTHONUNBUFFERED=1
@@ -123,18 +205,51 @@ ALGO_LIST="[$(echo "$ALGORITHMS" | sed 's/,/,/g' | sed 's/\([^,]*\)/"\1"/g')]"
 # Launch training
 echo -e "${GREEN}🚀 Launching unified alternating training...${NC}"
 
-/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_alternating \
+# Build experiment name with key parameters
+EXPERIMENT_NAME="alternating-$(echo "$ALGORITHMS" | tr ',' '-')-${KL_MODE}-steps${STEPS_PER_PHASE}"
+if [[ "$TEST_MODE" == "true" ]]; then
+    EXPERIMENT_NAME="test-${EXPERIMENT_NAME}"
+fi
+
+# Build additional parameters for the training command
+EXTRA_PARAMS=""
+if [[ -n "$DATASET_LIMIT" ]]; then
+    EXTRA_PARAMS="$EXTRA_PARAMS data.dataset_limit=$DATASET_LIMIT"
+fi
+
+# Add KL mode configuration
+case "$KL_MODE" in
+    kl005)
+        EXTRA_PARAMS="$EXTRA_PARAMS alternating.kl_mode=kl005"
+        ;;
+    kl01)
+        EXTRA_PARAMS="$EXTRA_PARAMS alternating.kl_mode=kl01"
+        ;;
+    kl02)
+        EXTRA_PARAMS="$EXTRA_PARAMS alternating.kl_mode=kl02"
+        ;;
+    kl05)
+        EXTRA_PARAMS="$EXTRA_PARAMS alternating.kl_mode=kl05"
+        ;;
+    no-kl)
+        EXTRA_PARAMS="$EXTRA_PARAMS alternating.kl_mode=no-kl"
+        ;;
+esac
+
+/home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trainer.main_alternating \
     --config-name="$CONFIG_NAME" \
-    trainer.experiment_name="unified-alternating-$(date +%Y%m%d-%H%M%S)" \
-    trainer.project_name=ArcherCodeR \
+    trainer.experiment_name="$EXPERIMENT_NAME" \
+    trainer.project_name="$PROJECT_NAME" \
     trainer.total_epochs="$TOTAL_EPOCHS" \
     trainer.default_local_dir="$OUTPUT_DIR" \
     trainer.validation_data_dir="$OUTPUT_DIR/eval" \
     alternating.algorithms="$ALGO_LIST" \
     alternating.steps_per_phase="$STEPS_PER_PHASE" \
     alternating.start_algorithm="$START_ALGORITHM" \
+    alternating.test_mode="$TEST_MODE" \
     data.train_files=./data/train/archercoder-1.5b-train.json \
     data.val_files=./data/test/livecodebench_v5.json \
+    $EXTRA_PARAMS \
     "$@" 2>&1 | tee "$OUTPUT_DIR/training.log"
 
 # Check exit status
@@ -170,3 +285,7 @@ if [ -d "$OUTPUT_DIR" ]; then
 fi
 
 echo -e "${GREEN}🎯 Training completed! Check the output directory for results.${NC}"
+
+
+
+# bash scripts/train/run_alternating_unified.sh     --test-mode     --dataset-limit 500     --kl-mode no-kl

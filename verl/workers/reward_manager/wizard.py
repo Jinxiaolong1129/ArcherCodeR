@@ -63,19 +63,32 @@ def zipngram(text: str, ngram_size: int):
 
 
 def parallel_compute_score(evaluation_func, response_str, ground_truth, data_sources, extra_info, enable_llm=False, is_eval=False, max_workers=64):
-    # with tqdm(total=len(response_str)) as pbar:
+    import concurrent.futures
+    import time
+    
+    # Timeout for individual score computation (per response)
+    SCORE_TIMEOUT = 360  # 2 minutes per response
+    
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(evaluation_func, data_sources[index], response_str[index], ground_truth[index], None, enable_llm, is_eval): index
             for index in range(len(response_str))
         }
         results = {}
-        metadata = {}
-        for future in as_completed(futures):
+        
+        for future in as_completed(futures, timeout=SCORE_TIMEOUT * len(response_str)):
             index = futures[future]
-            results[index] = future.result()
+            try:
+                # Get result with timeout
+                results[index] = future.result(timeout=SCORE_TIMEOUT)
+            except concurrent.futures.TimeoutError:
+                print(f"        ⏰ Score computation timeout for sequence {index}")
+                results[index] = 0.0  # Default score for timeout
+            except Exception as e:
+                print(f"        ❌ Error computing score for sequence {index}: {str(e)[:100]}...")
+                results[index] = 0.0  # Default score for error
 
-    return [results[i] for i in range(len(response_str))]
+    return [results.get(i, 0.0) for i in range(len(response_str))]
 
 
 @register("wizard")
@@ -179,43 +192,101 @@ class WizardRewardManager:
         most_repeated = []
         batch_ngrams_counts = defaultdict(int)
         ngram_size = 20
+        
+        # Safety limits to prevent infinite loops and memory issues
+        MAX_SEQUENCE_LENGTH = 50000  # Limit sequence length
+        MAX_NGRAMS_PER_SEQUENCE = 10000  # Limit number of n-grams processed per sequence
+        MAX_BATCH_NGRAMS = 100000  # Limit total n-grams in batch
+        TIMEOUT_PER_SEQUENCE = 5.0  # 5 seconds timeout per sequence
 
         print(f"        📊 Processing {len(sequences_str)} sequences for repetition detection (ngram_size={ngram_size})...")
 
         for idx, sequence in enumerate(sequences_str):
             if idx % 10 == 0 and idx > 0:
                 print(f"        📈 Processed {idx}/{len(sequences_str)} sequences for repetition...")
-                
-            ngrams_counts = defaultdict(int)
-            ngrams = zipngram(sequence, ngram_size)
-            total_ngrams = len(ngrams)
             
-            if total_ngrams == 0:
+            sequence_start_time = time.time()
+            
+            try:
+                # Truncate overly long sequences to prevent memory issues
+                if len(sequence) > MAX_SEQUENCE_LENGTH:
+                    print(f"        ⚠️  Sequence {idx} too long ({len(sequence)} chars), truncating to {MAX_SEQUENCE_LENGTH}")
+                    sequence = sequence[:MAX_SEQUENCE_LENGTH]
+                
+                ngrams_counts = defaultdict(int)
+                ngrams = zipngram(sequence, ngram_size)
+                total_ngrams = len(ngrams)
+                
+                # Skip if too many n-grams (likely infinite repetition)
+                if total_ngrams > MAX_NGRAMS_PER_SEQUENCE:
+                    print(f"        ⚠️  Sequence {idx} has too many n-grams ({total_ngrams}), skipping detailed analysis")
+                    repetition_ratios.append(1.0)  # Assume high repetition
+                    most_repeated.append(total_ngrams // ngram_size)  # Rough estimate
+                    continue
+                
+                if total_ngrams == 0:
+                    repetition_ratios.append(0.0)
+                    most_repeated.append(0.0)
+                    continue
+
+                seen_ngrams = set()
+                repeated_count = 0
+                processed_ngrams = 0
+                
+                for ng in ngrams:
+                    # Check timeout for each sequence
+                    if time.time() - sequence_start_time > TIMEOUT_PER_SEQUENCE:
+                        print(f"        ⏰ Sequence {idx} timeout, using partial results")
+                        break
+                    
+                    # Limit batch n-grams to prevent memory explosion
+                    if len(batch_ngrams_counts) > MAX_BATCH_NGRAMS:
+                        print(f"        ⚠️  Batch n-grams limit reached, skipping batch tracking")
+                        batch_ngrams_counts.clear()  # Clear to free memory
+                    
+                    ng_with_id = (f"Seq_{idx}: ",) + ng
+                    ngrams_counts[ng_with_id] += 1
+                    
+                    if len(batch_ngrams_counts) <= MAX_BATCH_NGRAMS:
+                        batch_ngrams_counts[ng_with_id] += 1
+                    
+                    if ng in seen_ngrams:
+                        repeated_count += 1
+                    else:
+                        seen_ngrams.add(ng)
+                    
+                    processed_ngrams += 1
+
+                # Calculate ratios based on processed n-grams
+                if processed_ngrams > 0:
+                    repetition_ratios.append(repeated_count / processed_ngrams)
+                    if ngrams_counts:
+                        most_repeated.append(max(ngrams_counts.values()))
+                    else:
+                        most_repeated.append(0.0)
+                else:
+                    repetition_ratios.append(0.0)
+                    most_repeated.append(0.0)
+                    
+            except Exception as e:
+                print(f"        ❌ Error processing sequence {idx}: {str(e)[:100]}...")
                 repetition_ratios.append(0.0)
                 most_repeated.append(0.0)
                 continue
 
-            seen_ngrams = set()
-            repeated_count = 0
-            
-            for ng in ngrams:
-                ng = (f"Sequence_id {idx}: ",) + ng
-                ngrams_counts[ng] += 1
-                batch_ngrams_counts[ng] += 1
-                if ng in seen_ngrams:
-                    repeated_count += 1
-                else:
-                    seen_ngrams.add(ng)
-
-            repetition_ratios.append(repeated_count / total_ngrams)
-            most_repeated.append(sorted(ngrams_counts.items(), key=lambda x: x[1], reverse=True)[0][1]) 
-
         print(f"        🔍 Analyzing batch-wide repetition patterns...")
         if batch_ngrams_counts:
-            batch_most_repeated = sorted(batch_ngrams_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-            for i, (ngram, count) in enumerate(batch_most_repeated):
-                print(f"Batch Top-{i+1} Frequency: {count}")
-                print(f"N-gram: {' '.join(ngram)}")
+            try:
+                batch_most_repeated = sorted(batch_ngrams_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+                for i, (ngram, count) in enumerate(batch_most_repeated):
+                    print(f"Batch Top-{i+1} Frequency: {count}")
+                    # Truncate very long n-grams for display
+                    ngram_str = ' '.join(ngram)
+                    if len(ngram_str) > 200:
+                        ngram_str = ngram_str[:200] + "..."
+                    print(f"N-gram: {ngram_str}")
+            except Exception as e:
+                print(f"        ⚠️  Error analyzing batch patterns: {str(e)[:100]}...")
 
         print(f"        ✅ Repetition ratio calculation completed in {time.time() - repetition_start_time:.2f}s")
         return defaultdict(list, {'token/maximum_frequency': most_repeated, 'token/repetition_ratio': repetition_ratios})
