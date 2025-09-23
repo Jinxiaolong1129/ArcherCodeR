@@ -174,6 +174,25 @@ def self_certainty_from_logits(logits: torch.Tensor):
     return self_certainty
 
 
+def self_certainty_from_logits_new(logits: torch.Tensor):
+    """Top-1 vs. top-2 probability margin as a confidence score."""
+    probs = torch.nn.functional.softmax(logits, dim=-1)
+    top_values, _ = torch.topk(probs, k=2, dim=-1)
+    margins = top_values[..., 0] - top_values[..., 1]
+    return margins
+
+
+def entropy_from_logits_with_chunking(logits: torch.Tensor, chunk_size: int = 2048):
+    """Memory-efficient entropy calculation with chunking."""
+    entropy = torch.zeros(logits.shape[0], device=logits.device)
+    for i in range(0, logits.shape[0], chunk_size):
+        logits_chunk = logits[i : i + chunk_size].float()
+        pd_chunk = torch.nn.functional.softmax(logits_chunk, dim=-1)
+        entropy_chunk = torch.logsumexp(logits_chunk, dim=-1) - torch.sum(pd_chunk * logits_chunk, dim=-1)
+        entropy[i : i + chunk_size] = entropy_chunk
+    return entropy
+
+
 def masked_sum(values, mask, axis=None):
     """Compute mean of tensor with a masked values."""
     return (values * mask).sum(axis=axis)

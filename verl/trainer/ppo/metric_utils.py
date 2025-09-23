@@ -166,6 +166,55 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
             if "self_certaintys" in batch.batch
             else {}
         ),
+        # INTUITOR distribution metrics (using batch mean as threshold, same as INTUITOR_SELECTIVE)
+        **(
+            {
+                "intuitor/batch_mean_certainty": batch.non_tensor_batch["intuitor_batch_mean_certainty"],
+                "intuitor/batch_median_certainty": batch.non_tensor_batch["intuitor_batch_median_certainty"],
+                "intuitor/low_certainty_count": batch.non_tensor_batch["intuitor_low_certainty_mask"].sum(),
+                "intuitor/high_certainty_count": batch.non_tensor_batch["intuitor_high_certainty_mask"].sum(),
+                "intuitor/low_certainty_ratio": batch.non_tensor_batch["intuitor_low_certainty_mask"].sum() / len(batch.non_tensor_batch["intuitor_low_certainty_mask"]),
+                "intuitor/high_certainty_ratio": batch.non_tensor_batch["intuitor_high_certainty_mask"].sum() / len(batch.non_tensor_batch["intuitor_high_certainty_mask"]),
+                "intuitor/low_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_certainty_scores"][batch.non_tensor_batch["intuitor_low_certainty_mask"]]) if batch.non_tensor_batch["intuitor_low_certainty_mask"].sum() > 0 else 0.0,
+                "intuitor/high_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_certainty_scores"][batch.non_tensor_batch["intuitor_high_certainty_mask"]]) if batch.non_tensor_batch["intuitor_high_certainty_mask"].sum() > 0 else 0.0,
+            }
+            if "intuitor_certainty_scores" in batch.non_tensor_batch
+            else {}
+        ),
+        # INTUITOR_ENTROPY distribution metrics (using batch mean as threshold, same as INTUITOR_SELECTIVE)
+        **(
+            {
+                "intuitor_entropy/batch_mean_certainty": batch.non_tensor_batch["intuitor_entropy_batch_mean_certainty"],
+                "intuitor_entropy/batch_median_certainty": batch.non_tensor_batch["intuitor_entropy_batch_median_certainty"],
+                "intuitor_entropy/low_certainty_count": batch.non_tensor_batch["intuitor_entropy_low_certainty_mask"].sum(),
+                "intuitor_entropy/high_certainty_count": batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"].sum(),
+                "intuitor_entropy/low_certainty_ratio": batch.non_tensor_batch["intuitor_entropy_low_certainty_mask"].sum() / len(batch.non_tensor_batch["intuitor_entropy_low_certainty_mask"]),
+                "intuitor_entropy/high_certainty_ratio": batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"].sum() / len(batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"]),
+                "intuitor_entropy/low_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_entropy_certainty_scores"][batch.non_tensor_batch["intuitor_entropy_low_certainty_mask"]]) if batch.non_tensor_batch["intuitor_entropy_low_certainty_mask"].sum() > 0 else 0.0,
+                "intuitor_entropy/high_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_entropy_certainty_scores"][batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"]]) if batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"].sum() > 0 else 0.0,
+            }
+            if "intuitor_entropy_certainty_scores" in batch.non_tensor_batch
+            else {}
+        ),
+        # INTUITOR_SELECTIVE specific metrics
+        **(
+            {
+                "intuitor_selective/selected_sequences": batch.non_tensor_batch["intuitor_selected_mask"].sum(),
+                "intuitor_selective/total_sequences": len(batch.non_tensor_batch["intuitor_selected_mask"]),
+                "intuitor_selective/selection_ratio": batch.non_tensor_batch["intuitor_selected_mask"].sum() / len(batch.non_tensor_batch["intuitor_selected_mask"]),
+                "intuitor_selective/batch_mean_certainty": np.mean(batch.non_tensor_batch["intuitor_certainty_scores"]),
+                "intuitor_selective/certainty_std": np.std(batch.non_tensor_batch["intuitor_certainty_scores"]),
+                "intuitor_selective/max_length_sequences": batch.non_tensor_batch["intuitor_reached_max_length"].sum(),
+                "intuitor_selective/max_length_ratio": batch.non_tensor_batch["intuitor_reached_max_length"].sum() / len(batch.non_tensor_batch["intuitor_reached_max_length"]),
+                # Selected vs non-selected certainty comparison
+                "intuitor_selective/selected_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_certainty_scores"][batch.non_tensor_batch["intuitor_selected_mask"]]) if batch.non_tensor_batch["intuitor_selected_mask"].sum() > 0 else 0.0,
+                "intuitor_selective/non_selected_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_certainty_scores"][~batch.non_tensor_batch["intuitor_selected_mask"]]) if (~batch.non_tensor_batch["intuitor_selected_mask"]).sum() > 0 else 0.0,
+                # Training efficiency metrics
+                "intuitor_selective/compute_efficiency": batch.non_tensor_batch["intuitor_selected_mask"].sum() / len(batch.non_tensor_batch["intuitor_selected_mask"]),  # Same as selection_ratio but semantically different
+            }
+            if "intuitor_selected_mask" in batch.non_tensor_batch
+            else {}
+        ),
         # response length
         "response_length/mean": torch.mean(response_length).detach().item(),
         "response_length/max": torch.max(response_length).detach().item(),

@@ -4,7 +4,7 @@ SLURM_JOB_NODELIST: compute-891
 SLURM_GPUS: 8
 Date: Thu Aug  7 18:50:58 UTC 2025
 Python version: Python 3.10.18
-Python path: /data/xuandong_zhao/anaconda3/envs/archer/bin/python
+Python path: /home/ec2-user/miniconda3/envs/archer/bin/python
 Looking in indexes: https://download.pytorch.org/whl/cu124
 Requirement already satisfied: torch==2.5.1 in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (2.5.1+cu124)
 Requirement already satisfied: filelock in /data/xuandong_zhao/anaconda3/envs/archer/lib/python3.10/site-packages (from torch==2.5.1) (3.18.0)
