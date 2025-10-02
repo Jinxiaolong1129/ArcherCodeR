@@ -94,7 +94,8 @@ def load_reward_manager(config, tokenizer, num_examine=0, for_validation=False, 
     use_general_reward = config.reward_model.get("use_general_reward", False)
     
     # Special handling for Intuitor algorithm
-    if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator == "intuitor":
+    # if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator in ["intuitor", "intuitor_selective"]:
+    if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator in ["intuitor"]:
         if for_validation:
             # For validation, use actual reward function (e.g., livecodebench) - import directly like DAPO
             print("🎯 Loading general_reward_fn for Intuitor validation (supports livecodebench)")
@@ -110,10 +111,11 @@ def load_reward_manager(config, tokenizer, num_examine=0, for_validation=False, 
         from rewards.general_reward import general_reward_fn
         final_compute_score = general_reward_fn
     else:
+        print(f"🎯 Loading custom reward function | {config.algorithm.adv_estimator=} | {config.reward_model.get('reward_manager', 'naive')=}")
         # Try to get a custom reward function based on the configuration
         compute_score = get_custom_reward_fn(config)
         final_compute_score = compute_score
-
+        print(f"🎯 Loaded custom reward function | {compute_score=} | {final_compute_score=}")
         if compute_score is None:
             sandbox_config = config.reward_model.get("sandbox_fusion")
             sandbox_url = sandbox_config.get("url") if sandbox_config else None

@@ -178,7 +178,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
                 "intuitor/low_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_certainty_scores"][batch.non_tensor_batch["intuitor_low_certainty_mask"]]) if batch.non_tensor_batch["intuitor_low_certainty_mask"].sum() > 0 else 0.0,
                 "intuitor/high_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_certainty_scores"][batch.non_tensor_batch["intuitor_high_certainty_mask"]]) if batch.non_tensor_batch["intuitor_high_certainty_mask"].sum() > 0 else 0.0,
             }
-            if "intuitor_certainty_scores" in batch.non_tensor_batch
+            if "intuitor_batch_mean_certainty" in batch.non_tensor_batch
             else {}
         ),
         # INTUITOR_ENTROPY distribution metrics (using batch mean as threshold, same as INTUITOR_SELECTIVE)
@@ -193,7 +193,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
                 "intuitor_entropy/low_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_entropy_certainty_scores"][batch.non_tensor_batch["intuitor_entropy_low_certainty_mask"]]) if batch.non_tensor_batch["intuitor_entropy_low_certainty_mask"].sum() > 0 else 0.0,
                 "intuitor_entropy/high_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_entropy_certainty_scores"][batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"]]) if batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"].sum() > 0 else 0.0,
             }
-            if "intuitor_entropy_certainty_scores" in batch.non_tensor_batch
+            if "intuitor_entropy_batch_mean_certainty" in batch.non_tensor_batch
             else {}
         ),
         # INTUITOR_SELECTIVE specific metrics
