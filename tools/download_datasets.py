@@ -1,4 +1,4 @@
-#!/data/xuandong_zhao/anaconda3/envs/archer/bin/python
+#!/home/ec2-user/miniconda3/envs/archer/bin/python
 # -*- coding: utf-8 -*-
 '''
 @Time    :   2025/06/17 19:18:58

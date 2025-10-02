@@ -110,7 +110,7 @@ fi
 # Only run setup tasks on the main node
 if [[ $SLURM_PROCID -eq 0 ]]; then
     echo "Step 1: Downloading datasets..."
-    /data/xuandong_zhao/anaconda3/envs/archer/bin/python tools/download_datasets.py
+    /home/ec2-user/miniconda3/envs/archer/bin/python tools/download_datasets.py
 
     echo "Step 2: Starting Ray cluster..."
     bash ./tools/start_ray.sh

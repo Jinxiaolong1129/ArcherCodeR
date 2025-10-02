@@ -55,7 +55,25 @@ class Tracking:
             settings = None
             if config and config["trainer"].get("wandb_proxy", None):
                 settings = wandb.Settings(https_proxy=config["trainer"]["wandb_proxy"])
-            wandb.init(project=project_name, name=experiment_name, id=experiment_name, config=config, settings=settings, save_code=True, resume="allow", allow_val_change=True)
+            
+            # Check if we're resuming from a checkpoint
+            # If resume_mode is "resume_path" and we're not continuing the same training,
+            # we should start a new wandb run instead of resuming
+            resume_mode = "allow"
+            if config and config.get("trainer"):
+                trainer_config = config["trainer"]
+                # If resuming from a different checkpoint path (e.g., from GRPO to Intuitor),
+                # start a new wandb run to avoid step number conflicts
+                if trainer_config.get("resume_mode") == "resume_path":
+                    resume_from_path = trainer_config.get("resume_from_path", "")
+                    # Check if we're resuming from a different experiment
+                    # (e.g., different checkpoint than the current experiment name)
+                    if resume_from_path and experiment_name not in resume_from_path:
+                        print(f"🔄 Detected cross-experiment resume: from '{resume_from_path}' to '{experiment_name}'")
+                        print(f"   Starting new WandB run to avoid step conflicts")
+                        resume_mode = False  # Start fresh wandb run
+            
+            wandb.init(project=project_name, name=experiment_name, id=experiment_name, config=config, settings=settings, save_code=True, resume=resume_mode, allow_val_change=True)
 
             self.logger["wandb"] = wandb
 
