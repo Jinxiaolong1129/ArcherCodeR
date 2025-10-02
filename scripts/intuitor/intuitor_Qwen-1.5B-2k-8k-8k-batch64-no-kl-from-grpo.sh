@@ -76,7 +76,7 @@ echo "❌ KL Loss: DISABLED"
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-/home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=${adv_estimator} \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \

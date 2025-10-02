@@ -10,9 +10,9 @@
 #SBATCH --account=dawn_song
 #SBATCH --mail-type=all
 #SBATCH --mail-user=jinxiaolong1129@gmail.com
-#SBATCH --output=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/slurm_out_%j.txt
-#SBATCH --error=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/slurm_error_%j.txt
-#SBATCH --job-name=intuitor-qwen2.5-1.5b-2k-8k-8k-batch64-no-kl-simple
+#SBATCH --output=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor/slurm_out_%j.txt
+#SBATCH --error=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor/slurm_error_%j.txt
+#SBATCH --job-name=archer-qwen2.5-1.5b-2k-8k-16resp-no-kl-from-intuitor
 
 # 导入环境变量
 if [ -f .env ]; then
@@ -40,7 +40,7 @@ unset AMD_VISIBLE_DEVICES
 cd /data/xuandong_zhao/mnt/xiaolong/ArcherCodeR
 
 # Make sure output directory exists for SLURM logs
-mkdir -p ./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple
+mkdir -p ./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor
 
 # Stop any existing Ray processes and clean up
 ray stop --force 2>/dev/null || true
@@ -55,5 +55,9 @@ pkill -f "ray.worker" 2>/dev/null || true
 rm -rf /tmp/ray 2>/dev/null || true
 rm -rf /dev/shm/ray* 2>/dev/null || true
 
-# Run the training script with explicit Ray CPU configuration
-bash scripts/intuitor/intuitor_Qwen-1.5B-2k-8k-8k-batch64-no-kl-simple_ray.sh ray_init.num_cpus=160
+# Run the training script
+bash scripts/train/run_Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor.sh
+
+
+
+

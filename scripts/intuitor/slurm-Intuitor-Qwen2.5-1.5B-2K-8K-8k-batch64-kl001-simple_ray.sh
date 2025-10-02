@@ -39,8 +39,18 @@ cd /data/xuandong_zhao/mnt/xiaolong/ArcherCodeR
 # Make sure output directory exists for SLURM logs
 mkdir -p ./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-kl001-simple
 
-# Stop any existing Ray processes
+# Stop any existing Ray processes and clean up
 ray stop --force 2>/dev/null || true
+sleep 5  # Wait for Ray to fully shut down
+
+# Kill any remaining Ray processes
+pkill -f ray:: 2>/dev/null || true
+pkill -f "ray start" 2>/dev/null || true
+pkill -f "ray.worker" 2>/dev/null || true
+
+# Clean up Ray temporary files
+rm -rf /tmp/ray 2>/dev/null || true
+rm -rf /dev/shm/ray* 2>/dev/null || true
 
 # Run the training script with explicit Ray CPU configuration
 bash scripts/intuitor/intuitor_Qwen-1.5B-2k-8k-8k-batch64-kl001-simple_ray.sh ray_init.num_cpus=160

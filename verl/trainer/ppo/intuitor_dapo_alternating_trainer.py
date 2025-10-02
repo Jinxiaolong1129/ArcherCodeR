@@ -356,11 +356,17 @@ class IntuitorDAPOAlternatingTrainer(RayPPOTrainer):
     def _save_alternating_state(self):
         """Save alternating training state"""
         import json
+        from omegaconf import ListConfig
         
         local_global_step_folder = os.path.join(
             self.config.trainer.default_local_dir, 
             f"global_step_{self.global_steps}"
         )
+        
+        # Convert modes to regular Python list if it's a ListConfig
+        modes = self.alternating_config.modes
+        if isinstance(modes, ListConfig):
+            modes = list(modes)
         
         # Save alternating state
         alternating_state = {
@@ -369,7 +375,7 @@ class IntuitorDAPOAlternatingTrainer(RayPPOTrainer):
             'steps_in_current_phase': self.steps_in_current_phase,
             'phase_history': self.phase_history,
             'alternating_config': {
-                'modes': self.alternating_config.modes,
+                'modes': modes,
                 'steps_per_phase': self.alternating_config.steps_per_phase,
                 'start_mode': self.alternating_config.start_mode,
             }

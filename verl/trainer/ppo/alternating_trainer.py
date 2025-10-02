@@ -319,11 +319,17 @@ class AlternatingRayPPOTrainer(RayPPOTrainer):
     def _save_alternating_state(self):
         """Save alternating training state"""
         import json
+        from omegaconf import ListConfig
         
         local_global_step_folder = os.path.join(
             self.config.trainer.default_local_dir, 
             f"global_step_{self.global_steps}"
         )
+        
+        # Convert algorithms to regular Python list if it's a ListConfig
+        algorithms = self.alternating_config.algorithms
+        if isinstance(algorithms, ListConfig):
+            algorithms = list(algorithms)
         
         # Save alternating state
         alternating_state = {
@@ -332,7 +338,7 @@ class AlternatingRayPPOTrainer(RayPPOTrainer):
             'steps_in_current_phase': self.steps_in_current_phase,
             'phase_history': self.phase_history,
             'alternating_config': {
-                'algorithms': self.alternating_config.algorithms,
+                'algorithms': algorithms,
                 'steps_per_phase': self.alternating_config.steps_per_phase,
                 'start_algorithm': self.alternating_config.start_algorithm,
             }

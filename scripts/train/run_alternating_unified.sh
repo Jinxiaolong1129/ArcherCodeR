@@ -178,7 +178,7 @@ if [[ "$TEST_MODE" == "true" ]]; then
 fi
 echo -e "📁 Output directory: ${YELLOW}$OUTPUT_DIR${NC}"
 echo -e "⚙️  Configuration: ${YELLOW}$CONFIG_NAME${NC}"
-echo -e "🐍 Python: ${YELLOW}/home/ec2-user/miniconda3/envs/archer/bin/python${NC}"
+echo -e "🐍 Python: ${YELLOW}/data/xuandong_zhao/anaconda3/envs/archer/bin/python${NC}"
 echo -e "${BLUE}=================================================${NC}"
 
 # Confirm execution
@@ -236,7 +236,7 @@ case "$KL_MODE" in
         ;;
 esac
 
-/home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trainer.main_alternating \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_alternating \
     --config-name="$CONFIG_NAME" \
     trainer.experiment_name="$EXPERIMENT_NAME" \
     trainer.project_name="$PROJECT_NAME" \
@@ -249,6 +249,8 @@ esac
     alternating.test_mode="$TEST_MODE" \
     data.train_files=./data/train/archercoder-1.5b-train.json \
     data.val_files=./data/test/livecodebench_v5.json \
+    trainer.max_actor_ckpt_to_keep=2 \
+    trainer.max_critic_ckpt_to_keep=2 \
     $EXTRA_PARAMS \
     "$@" 2>&1 | tee "$OUTPUT_DIR/training.log"
 
@@ -289,3 +291,18 @@ echo -e "${GREEN}🎯 Training completed! Check the output directory for results
 
 
 # bash scripts/train/run_alternating_unified.sh     --test-mode     --dataset-limit 500     --kl-mode no-kl
+
+# bash scripts/train/run_alternating_unified.sh \
+#     --algorithms "grpo,intuitor" \
+#     --steps-per-phase 40 \
+#     --start-with grpo \
+#     --kl-mode no-kl
+
+# 使用自定义检查点保留数量的示例:
+# bash scripts/train/run_alternating_unified.sh \
+#     --algorithms "grpo,intuitor" \
+#     --steps-per-phase 40 \
+#     --start-with grpo \
+#     --kl-mode no-kl \
+#     trainer.max_actor_ckpt_to_keep=5 \
+#     trainer.max_critic_ckpt_to_keep=3

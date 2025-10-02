@@ -108,7 +108,7 @@ echo -e "🎯 Starting mode: ${YELLOW}$START_MODE${NC}"
 echo -e "📊 Total epochs: ${YELLOW}$TOTAL_EPOCHS${NC}"
 echo -e "📁 Output directory: ${YELLOW}$OUTPUT_DIR${NC}"
 echo -e "⚙️  Configuration: ${YELLOW}$CONFIG_NAME${NC}"
-echo -e "🐍 Python: ${YELLOW}/home/ec2-user/miniconda3/envs/archer/bin/python${NC}"
+echo -e "🐍 Python: ${YELLOW}/data/xuandong_zhao/anaconda3/envs/archer/bin/python${NC}"
 echo -e "${BLUE}======================================================${NC}"
 echo ""
 echo -e "${YELLOW}📝 Training Overview:${NC}"
@@ -140,7 +140,7 @@ MODE_LIST="[$(echo "$MODES" | sed 's/,/,/g' | sed 's/\([^,]*\)/"\1"/g')]"
 # Launch training
 echo -e "${GREEN}🚀 Launching Intuitor-DAPO alternating training...${NC}"
 
-/home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trainer.main_intuitor_dapo_alternating \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_intuitor_dapo_alternating \
     --config-name="$CONFIG_NAME" \
     trainer.experiment_name="intuitor-dapo-alternating-$(date +%Y%m%d-%H%M%S)" \
     trainer.project_name=ArcherCodeR \
