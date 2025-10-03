@@ -92,18 +92,27 @@ def load_reward_manager(config, tokenizer, num_examine=0, for_validation=False, 
 
     # Check if we should use rewards/general_reward.py (like DAPO)
     use_general_reward = config.reward_model.get("use_general_reward", False)
+    print(f"🎯 Loading reward function | {use_general_reward=} | {config.algorithm.adv_estimator=} | {reward_manager_name=} | {reward_manager_cls=}")
     
     # Special handling for Intuitor algorithm
-    # if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator in ["intuitor", "intuitor_selective"]:
-    if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator in ["intuitor"]:
-        if for_validation:
-            # For validation, use actual reward function (e.g., livecodebench) - import directly like DAPO
-            print("🎯 Loading general_reward_fn for Intuitor validation (supports livecodebench)")
+    if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator in ["intuitor", "intuitor_selective", "intuitor_entropy"]:
+        algo_name = config.algorithm.adv_estimator
+        
+        if algo_name == "intuitor_selective":
+            # Intuitor_Selective needs REAL reward function for training & validation
+            # because it uses ground truth rewards (not self-certainty) after sample selection
             from rewards.general_reward import general_reward_fn
+            mode = "validation" if for_validation else "training"
+            print(f"🎯 Loading general_reward_fn for {algo_name} {mode} (DAPO-style, supports code & math tasks)")
+            final_compute_score = general_reward_fn
+        elif for_validation:
+            # For validation: all Intuitor variants use actual reward function
+            from rewards.general_reward import general_reward_fn
+            print(f"🎯 Loading general_reward_fn for {algo_name} validation (supports code & math tasks)")
             final_compute_score = general_reward_fn
         else:
-            # For training, use dummy reward since Intuitor uses self-certainty
-            print("🎯 Loading dummy reward function for Intuitor training (uses self-certainty)")
+            # For Intuitor/Intuitor_Entropy training: use dummy reward since they use self-certainty/entropy
+            print(f"🎯 Loading dummy reward function for {algo_name} training (uses self-certainty/entropy as reward)")
             final_compute_score = _intuitor_dummy_reward_fn
     elif use_general_reward:
         # Use rewards/general_reward.py like DAPO does
