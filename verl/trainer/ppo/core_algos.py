@@ -89,6 +89,7 @@ class AdvantageEstimator(str, Enum):
     INTUITOR = "intuitor"
     INTUITOR_SELECTIVE = "intuitor_selective"
     INTUITOR_ENTROPY = "intuitor_entropy"
+    DACE = "dace"
 
 
 class AdaptiveKLController:
@@ -304,6 +305,222 @@ def compute_intuitor_advantage(
         # Broadcast sentence-level advantages back to token-level
         advantages = scores.unsqueeze(-1) * response_mask_float
 
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.DACE)
+def compute_dace_advantage(
+    token_level_rewards: torch.Tensor,
+    old_log_probs: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    alpha_scale: float = 0.05,
+    beta_threshold: float = 0.4,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config=None,
+    **kwargs,
+):
+    """
+    Compute advantage for DACE (Difficulty-Aware Certainty Exploration).
+    
+    DACE adaptively combines external rewards with an intrinsic certainty-based reward
+    that encourages exploration on difficult tasks and exploitation on easy tasks.
+    
+    Key components:
+    1. Difficulty estimation: diff(x) = 1 - mean(verify(y)) per prompt
+    2. Certainty metric: C(y,x) = -mean(log_prob(y|x))
+    3. Adaptive coefficient: α(x) = α_scale * sign(β_threshold - diff(x))
+    4. Intrinsic reward: R_int = α(x) * C(y,x)
+    5. Total reward: R_total = R_ext + R_int
+    
+    Args:
+        token_level_rewards: (torch.Tensor)
+            External reward (e.g., correctness), shape (bs, response_length)
+        old_log_probs: (torch.Tensor)
+            Log probabilities of generated tokens, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        alpha_scale: (float)
+            Scaling factor for the intrinsic reward coefficient
+        beta_threshold: (float)
+            Difficulty threshold determining exploration vs exploitation
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+        config: (dict)
+            Optional configuration dictionary
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 DACE ADVANTAGE COMPUTATION STARTED')
+    print('=' * 80)
+    print(f"📊 DACE Hyperparameters:")
+    print(f"  ├─ α_scale (intrinsic reward scaling): {alpha_scale}")
+    print(f"  ├─ β_threshold (difficulty threshold): {beta_threshold}")
+    print(f"  ├─ norm_adv_by_std_in_grpo: {norm_adv_by_std_in_grpo}")
+    print(f"  └─ epsilon: {epsilon}")
+    print(f"📦 Batch info:")
+    print(f"  ├─ Batch size: {token_level_rewards.shape[0]}")
+    print(f"  └─ Response length: {token_level_rewards.shape[1]}")
+    print('-' * 80)
+    
+    with torch.no_grad():
+        # 1. Compute external rewards (correctness scores)
+        print("📝 Step 1: Computing external rewards...")
+        external_scores = token_level_rewards.sum(dim=-1)  # (bs,)
+        print(f"  ├─ External reward range: [{external_scores.min().item():.4f}, {external_scores.max().item():.4f}]")
+        print(f"  ├─ External reward mean: {external_scores.mean().item():.4f}")
+        print(f"  └─ Correct samples: {(external_scores > 0).sum().item()}/{len(external_scores)}")
+        
+        # 2. Compute certainty metric: C(y,x) = -mean(log_prob(y|x))
+        # Note: Higher C value = lower prob = model is LESS confident (more uncertain)
+        #       Lower C value = higher prob = model is MORE confident (more certain)
+        print("📝 Step 2: Computing certainty metric...")
+        response_mask_float = response_mask.float()
+        masked_log_probs = old_log_probs * response_mask_float  # (bs, response_length)
+        sum_log_probs = masked_log_probs.sum(dim=-1)  # (bs,)
+        count = response_mask_float.sum(dim=-1) + epsilon  # (bs,)
+        certainty = -sum_log_probs / count  # (bs,) - negative avg log prob
+        print(f"  ├─ Certainty range: [{certainty.min().item():.4f}, {certainty.max().item():.4f}]")
+        print(f"  ├─ Certainty mean: {certainty.mean().item():.4f}")
+        print(f"  └─ Note: Higher C = higher -log_prob = lower confidence (uncertain)")
+        print(f"      Lower C = lower -log_prob = higher confidence (certain)")
+        
+        # 3. Estimate difficulty per prompt
+        # diff(x) = 1 - mean(verify(y)) where verify(y) is binary reward
+        print("📝 Step 3: Estimating difficulty per prompt...")
+        id2rewards = defaultdict(list)
+        id2certainties = defaultdict(list)
+        id2indices = defaultdict(list)
+        
+        bsz = external_scores.shape[0]
+        for i in range(bsz):
+            prompt_id = index[i]
+            id2rewards[prompt_id].append(external_scores[i])
+            id2certainties[prompt_id].append(certainty[i])
+            id2indices[prompt_id].append(i)
+        
+        print(f"  ├─ Number of unique prompts: {len(id2rewards)}")
+        print(f"  └─ Responses per prompt: {[len(id2rewards[pid]) for pid in list(id2rewards.keys())[:3]]}... (showing first 3)")
+        
+        # Compute difficulty and alpha for each prompt
+        id2difficulty = {}
+        id2alpha = {}
+        
+        print("📝 Step 4: Computing difficulty and adaptive coefficients...")
+        hard_tasks = 0
+        easy_tasks = 0
+        
+        for prompt_id in id2rewards:
+            rewards = torch.stack(id2rewards[prompt_id])
+            
+            # Normalize rewards to [0, 1] range for difficulty calculation
+            # This handles cases where rewards might be [-1, 1] instead of [0, 1]
+            min_reward = rewards.min()
+            max_reward = rewards.max()
+            if max_reward > min_reward:
+                # Normalize to [0, 1]: (r - min) / (max - min)
+                normalized_rewards = (rewards - min_reward) / (max_reward - min_reward)
+            else:
+                # All rewards are the same, set to 1.0 or 0.0 based on value
+                normalized_rewards = torch.ones_like(rewards) if rewards[0] > 0 else torch.zeros_like(rewards)
+            
+            # Difficulty = 1 - success_rate (where success_rate is in [0, 1])
+            success_rate = torch.mean(normalized_rewards)
+            difficulty = 1.0 - success_rate
+            id2difficulty[prompt_id] = difficulty
+            
+            # Adaptive coefficient: α = α_scale * sign(β_threshold - diff)
+            # If diff > threshold (hard): α is negative → encourage exploration (low certainty)
+            # If diff < threshold (easy): α is positive → encourage exploitation (high certainty)
+            sign_val = torch.sign(beta_threshold - difficulty)
+            alpha = alpha_scale * sign_val
+            id2alpha[prompt_id] = alpha
+            
+            if difficulty > beta_threshold:
+                hard_tasks += 1
+            else:
+                easy_tasks += 1
+        
+        # Show difficulty and alpha statistics
+        all_difficulties = torch.stack([id2difficulty[pid] for pid in id2difficulty.keys()])
+        all_alphas = torch.stack([id2alpha[pid] for pid in id2alpha.keys()])
+        print(f"  ├─ Difficulty range: [{all_difficulties.min().item():.4f}, {all_difficulties.max().item():.4f}]")
+        print(f"  ├─ Difficulty mean: {all_difficulties.mean().item():.4f}")
+        print(f"  ├─ β_threshold: {beta_threshold}")
+        print(f"  ├─ Hard tasks (diff > β): {hard_tasks}/{len(id2rewards)} ({100*hard_tasks/len(id2rewards):.1f}%)")
+        print(f"  ├─ Easy tasks (diff < β): {easy_tasks}/{len(id2rewards)} ({100*easy_tasks/len(id2rewards):.1f}%)")
+        print(f"  ├─ Alpha range: [{all_alphas.min().item():.4f}, {all_alphas.max().item():.4f}]")
+        print(f"  └─ Negative α → explore (low certainty), Positive α → exploit (high certainty)")
+        
+        # 4. Compute intrinsic rewards: R_int = α(x) * C(y,x)
+        print("📝 Step 5: Computing intrinsic rewards...")
+        intrinsic_rewards = torch.zeros_like(external_scores)
+        for i in range(bsz):
+            prompt_id = index[i]
+            alpha = id2alpha[prompt_id]
+            intrinsic_rewards[i] = alpha * certainty[i]
+        
+        print(f"  ├─ Intrinsic reward range: [{intrinsic_rewards.min().item():.4f}, {intrinsic_rewards.max().item():.4f}]")
+        print(f"  ├─ Intrinsic reward mean: {intrinsic_rewards.mean().item():.4f}")
+        print(f"  └─ Intrinsic reward std: {intrinsic_rewards.std().item():.4f}")
+        
+        # 5. Combine external and intrinsic rewards
+        print("📝 Step 6: Combining external and intrinsic rewards...")
+        total_scores = external_scores + intrinsic_rewards
+        print(f"  ├─ Total reward range: [{total_scores.min().item():.4f}, {total_scores.max().item():.4f}]")
+        print(f"  ├─ Total reward mean: {total_scores.mean().item():.4f}")
+        print(f"  └─ Total reward std: {total_scores.std().item():.4f}")
+        
+        # 6. Compute GRPO-style advantages using total rewards
+        print("📝 Step 7: Computing GRPO-style advantages...")
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        for i in range(bsz):
+            id2score[index[i]].append(total_scores[i])
+        
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=total_scores.device)
+                id2std[idx] = torch.tensor(1.0, device=total_scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        
+        # Normalize advantages
+        advantages_scalar = torch.zeros_like(total_scores)
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                advantages_scalar[i] = (total_scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                advantages_scalar[i] = total_scores[i] - id2mean[index[i]]
+        
+        print(f"  ├─ Advantage range: [{advantages_scalar.min().item():.4f}, {advantages_scalar.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {advantages_scalar.mean().item():.4f}")
+        print(f"  ├─ Advantage std: {advantages_scalar.std().item():.4f}")
+        print(f"  ├─ Positive advantages: {(advantages_scalar > 0).sum().item()}/{len(advantages_scalar)}")
+        print(f"  └─ Negative advantages: {(advantages_scalar < 0).sum().item()}/{len(advantages_scalar)}")
+        
+        # Broadcast to token level
+        advantages = advantages_scalar.unsqueeze(-1) * response_mask_float
+    
+    print('-' * 80)
+    print('✅ DACE ADVANTAGE COMPUTATION COMPLETED')
+    print('=' * 80)
+    
     return advantages, advantages
 
 

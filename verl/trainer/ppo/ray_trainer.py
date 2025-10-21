@@ -274,6 +274,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         sentence_wise_mean = sum_certainty / count               # [B]
         
         # Calculate batch statistics for logging
+        batch_size = self_certaintys.shape[0]
         batch_mean_certainty = sentence_wise_mean.mean()  # scalar
         batch_median_certainty = sentence_wise_mean.median()  # scalar
         
@@ -283,8 +284,8 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         
         # Store metrics data for logging
         data.non_tensor_batch["intuitor_certainty_scores"] = sentence_wise_mean.cpu().numpy()
-        data.non_tensor_batch["intuitor_batch_mean_certainty"] = batch_mean_certainty.item()
-        data.non_tensor_batch["intuitor_batch_median_certainty"] = batch_median_certainty.item()
+        data.non_tensor_batch["intuitor_batch_mean_certainty"] = np.full(batch_size, batch_mean_certainty.item(), dtype=np.float32)
+        data.non_tensor_batch["intuitor_batch_median_certainty"] = np.full(batch_size, batch_median_certainty.item(), dtype=np.float32)
         data.non_tensor_batch["intuitor_low_certainty_mask"] = low_certainty_mask.cpu().numpy()
         data.non_tensor_batch["intuitor_high_certainty_mask"] = high_certainty_mask.cpu().numpy()
         
@@ -324,6 +325,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         sentence_wise_mean = sum_certainty / count               # [B]
         
         # Calculate batch statistics for logging
+        batch_size = entropys.shape[0]
         batch_mean_certainty = sentence_wise_mean.mean()  # scalar
         batch_median_certainty = sentence_wise_mean.median()  # scalar
         
@@ -333,8 +335,8 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         
         # Store metrics data for logging
         data.non_tensor_batch["intuitor_entropy_certainty_scores"] = sentence_wise_mean.cpu().numpy()
-        data.non_tensor_batch["intuitor_entropy_batch_mean_certainty"] = batch_mean_certainty.item()
-        data.non_tensor_batch["intuitor_entropy_batch_median_certainty"] = batch_median_certainty.item()
+        data.non_tensor_batch["intuitor_entropy_batch_mean_certainty"] = np.full(batch_size, batch_mean_certainty.item(), dtype=np.float32)
+        data.non_tensor_batch["intuitor_entropy_batch_median_certainty"] = np.full(batch_size, batch_median_certainty.item(), dtype=np.float32)
         data.non_tensor_batch["intuitor_entropy_low_certainty_mask"] = low_certainty_mask.cpu().numpy()
         data.non_tensor_batch["intuitor_entropy_high_certainty_mask"] = high_certainty_mask.cpu().numpy()
         
@@ -467,8 +469,179 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         original_response_mask = data.batch["response_mask"].clone()
         data.batch["response_mask"] = original_response_mask * selected_seq_mask.unsqueeze(1).float()
         data.non_tensor_batch["original_response_mask"] = original_response_mask.cpu().numpy()
+    elif adv_estimator == AdvantageEstimator.DACE:
+        # DACE (Difficulty-Aware Certainty Exploration)
+        print('=' * 80)
+        print('🚀 DACE ADVANTAGE ESTIMATION - RAY TRAINER')
+        print('=' * 80)
+        
+        # Get required data
+        token_level_rewards = data.batch["token_level_rewards"]  # External rewards (correctness)
+        old_log_probs = data.batch["old_log_probs"]  # Log probabilities for certainty computation
+        response_mask = data.batch["response_mask"]
+        
+        # Get DACE hyperparameters from config (paper defaults: α=0.05, β=0.4)
+        alpha_scale = config.get("dace_alpha_scale", 0.05)
+        beta_threshold = config.get("dace_beta_threshold", 0.4)
+        
+        print(f"📊 Input Data:")
+        print(f"  ├─ token_level_rewards.shape: {token_level_rewards.shape}")
+        print(f"  ├─ old_log_probs.shape: {old_log_probs.shape}")
+        print(f"  ├─ response_mask.shape: {response_mask.shape}")
+        print(f"  └─ Number of unique prompts: {len(set(data.non_tensor_batch['uid']))}")
+        print(f"📊 DACE Hyperparameters:")
+        print(f"  ├─ α_scale (intrinsic reward scaling): {alpha_scale}")
+        print(f"  ├─ β_threshold (difficulty threshold): {beta_threshold}")
+        print(f"  └─ norm_adv_by_std_in_grpo: {norm_adv_by_std_in_grpo}")
+        print('-' * 80)
+        
+        # Compute DACE advantages
+        advantages, returns = core_algos.compute_dace_advantage(
+            token_level_rewards=token_level_rewards,
+            old_log_probs=old_log_probs,
+            response_mask=response_mask,
+            index=data.non_tensor_batch["uid"],
+            alpha_scale=alpha_scale,
+            beta_threshold=beta_threshold,
+            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+        )
+        
+        # Compute statistics for logging
+        print("📊 Computing statistics for logging...")
+        batch_size = token_level_rewards.shape[0]
+        external_scores = token_level_rewards.sum(dim=-1)
+        
+        # Compute certainty
+        response_mask_float = response_mask.float()
+        masked_log_probs = old_log_probs * response_mask_float
+        sum_log_probs = masked_log_probs.sum(dim=-1)
+        count = response_mask_float.sum(dim=-1) + 1e-8
+        certainty = -sum_log_probs / count
+        
+        # Compute intrinsic rewards for logging
+        # Group by prompt to calculate difficulty and alpha
+        from collections import defaultdict
+        id2rewards = defaultdict(list)
+        id2certainties = defaultdict(list)
+        id2indices = defaultdict(list)
+        
+        for i in range(batch_size):
+            prompt_id = data.non_tensor_batch["uid"][i]
+            id2rewards[prompt_id].append(external_scores[i])
+            id2certainties[prompt_id].append(certainty[i])
+            id2indices[prompt_id].append(i)
+        
+        # Compute difficulty and alpha for each prompt
+        difficulty_per_sample = torch.zeros(batch_size, device=external_scores.device)
+        alpha_per_sample = torch.zeros(batch_size, device=external_scores.device)
+        intrinsic_rewards = torch.zeros(batch_size, device=external_scores.device)
+        
+        for prompt_id in id2rewards:
+            rewards = torch.stack(id2rewards[prompt_id])
+            certainties = torch.stack(id2certainties[prompt_id])
+            indices = id2indices[prompt_id]
+            
+            # Normalize rewards to [0, 1]
+            min_reward = rewards.min()
+            max_reward = rewards.max()
+            if max_reward > min_reward:
+                normalized_rewards = (rewards - min_reward) / (max_reward - min_reward)
+            else:
+                normalized_rewards = torch.ones_like(rewards) if rewards[0] > 0 else torch.zeros_like(rewards)
+            
+            # Difficulty = 1 - success_rate
+            success_rate = torch.mean(normalized_rewards)
+            difficulty = 1.0 - success_rate
+            
+            # Adaptive coefficient: α = α_scale * sign(β_threshold - diff)
+            sign_val = torch.sign(beta_threshold - difficulty)
+            alpha = alpha_scale * sign_val
+            
+            # Store per-sample values
+            for idx, cert in zip(indices, certainties):
+                difficulty_per_sample[idx] = difficulty
+                alpha_per_sample[idx] = alpha
+                intrinsic_rewards[idx] = alpha * cert
+        
+        # Total rewards
+        total_rewards = external_scores + intrinsic_rewards
+        
+        # Store metrics for logging (all as numpy arrays)
+        data.non_tensor_batch["dace_external_rewards"] = external_scores.cpu().numpy()
+        data.non_tensor_batch["dace_certainty"] = certainty.cpu().numpy()
+        data.non_tensor_batch["dace_difficulty"] = difficulty_per_sample.cpu().numpy()
+        data.non_tensor_batch["dace_alpha"] = alpha_per_sample.cpu().numpy()
+        data.non_tensor_batch["dace_intrinsic_rewards"] = intrinsic_rewards.cpu().numpy()
+        data.non_tensor_batch["dace_total_rewards"] = total_rewards.cpu().numpy()
+        
+        # Create masks for hard/easy tasks
+        hard_task_mask = difficulty_per_sample > beta_threshold
+        easy_task_mask = difficulty_per_sample <= beta_threshold
+        data.non_tensor_batch["dace_hard_task_mask"] = hard_task_mask.cpu().numpy()
+        data.non_tensor_batch["dace_easy_task_mask"] = easy_task_mask.cpu().numpy()
+        
+        # Compute advantage statistics (token-level)
+        advantages_per_sample = advantages.sum(dim=-1) / response_mask.sum(dim=-1)
+        
+        # Compute statistics for hard vs easy tasks
+        hard_count = hard_task_mask.sum().item()
+        easy_count = easy_task_mask.sum().item()
+        num_unique_prompts = len(id2rewards)
+        
+        print('-' * 80)
+        print("📈 Final Statistics Summary:")
+        print(f"\n🎯 Task Distribution:")
+        print(f"  ├─ Total samples: {batch_size}")
+        print(f"  ├─ Unique prompts: {num_unique_prompts}")
+        print(f"  ├─ Hard tasks (diff > β={beta_threshold}): {hard_count}/{batch_size} ({100*hard_count/batch_size:.1f}%) → α < 0 (explore)")
+        print(f"  └─ Easy tasks (diff ≤ β={beta_threshold}): {easy_count}/{batch_size} ({100*easy_count/batch_size:.1f}%) → α > 0 (exploit)")
+        
+        print(f"\n📊 Difficulty & Alpha:")
+        print(f"  ├─ Difficulty range: [{difficulty_per_sample.min().item():.4f}, {difficulty_per_sample.max().item():.4f}]")
+        print(f"  ├─ Difficulty mean: {difficulty_per_sample.mean().item():.4f}")
+        print(f"  ├─ Alpha range: [{alpha_per_sample.min().item():.4f}, {alpha_per_sample.max().item():.4f}]")
+        print(f"  └─ Alpha mean: {alpha_per_sample.mean().item():.4f}")
+        
+        print(f"\n💰 Reward Components:")
+        print(f"  ├─ External reward (correctness):")
+        print(f"  │   ├─ Range: [{external_scores.min().item():.4f}, {external_scores.max().item():.4f}]")
+        print(f"  │   ├─ Mean: {external_scores.mean().item():.4f}")
+        print(f"  │   └─ Correct samples: {(external_scores > 0).sum().item()}/{batch_size} ({100*(external_scores > 0).sum().item()/batch_size:.1f}%)")
+        print(f"  ├─ Intrinsic reward (α × certainty):")
+        print(f"  │   ├─ Range: [{intrinsic_rewards.min().item():.4f}, {intrinsic_rewards.max().item():.4f}]")
+        print(f"  │   ├─ Mean: {intrinsic_rewards.mean().item():.4f}")
+        print(f"  │   └─ Contribution: {np.abs(intrinsic_rewards.mean().item()) / (np.abs(total_rewards.mean().item()) + 1e-8) * 100:.1f}%")
+        print(f"  └─ Total reward (external + intrinsic):")
+        print(f"      ├─ Range: [{total_rewards.min().item():.4f}, {total_rewards.max().item():.4f}]")
+        print(f"      └─ Mean: {total_rewards.mean().item():.4f}")
+        
+        print(f"\n🔍 Certainty Analysis (C = -mean(log_prob)):")
+        print(f"  ├─ Overall certainty range: [{certainty.min().item():.4f}, {certainty.max().item():.4f}]")
+        print(f"  ├─ Overall certainty mean: {certainty.mean().item():.4f}")
+        print(f"  │   Note: Higher C = model less confident, Lower C = model more confident")
+        if hard_count > 0:
+            hard_certainty = certainty[hard_task_mask]
+            print(f"  ├─ Hard task certainty mean: {hard_certainty.mean().item():.4f}")
+            print(f"  │   (α<0 encourages LOW C = high confidence responses)")
+        if easy_count > 0:
+            easy_certainty = certainty[easy_task_mask]
+            print(f"  └─ Easy task certainty mean: {easy_certainty.mean().item():.4f}")
+            print(f"      (α>0 encourages HIGH C = already confident, exploit)")
+        
+        print(f"\n📈 Advantages:")
+        print(f"  ├─ Advantage (per sample) range: [{advantages_per_sample.min().item():.4f}, {advantages_per_sample.max().item():.4f}]")
+        print(f"  ├─ Advantage (per sample) mean: {advantages_per_sample.mean().item():.4f}")
+        print(f"  ├─ Positive advantage samples: {(advantages_per_sample > 0).sum().item()}/{batch_size} ({100*(advantages_per_sample > 0).sum().item()/batch_size:.1f}%)")
+        print(f"  └─ Negative advantage samples: {(advantages_per_sample < 0).sum().item()}/{batch_size} ({100*(advantages_per_sample < 0).sum().item()/batch_size:.1f}%)")
+        
+        print('-' * 80)
+        print('✅ DACE ADVANTAGE ESTIMATION COMPLETED')
+        print('=' * 80)
+        
+        data.batch["advantages"] = advantages
+        data.batch["returns"] = returns
     else:
-        # handle all other adv estimator type other than GAE, GRPO, and INTUITOR
+        # handle all other adv estimator type other than GAE, GRPO, INTUITOR, and DACE
         adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
         
         adv_kwargs = {
@@ -553,6 +726,7 @@ class RayPPOTrainer:
             AdvantageEstimator.INTUITOR,
             AdvantageEstimator.INTUITOR_SELECTIVE,
             AdvantageEstimator.INTUITOR_ENTROPY,
+            AdvantageEstimator.DACE,
         ]:
             self.use_critic = False
         else:

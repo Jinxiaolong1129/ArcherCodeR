@@ -16,7 +16,7 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Intuitor-Selective-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple'
+exp_name='Archer-Intuitor-Selective-Qwen2.5-1.5B-2k-8k-batch64-no-kl-new'
 
 adv_estimator=intuitor_selective
 

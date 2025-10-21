@@ -12,13 +12,12 @@ else
     echo -e "⚠️  Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
 fi
 
-
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-new'
+exp_name='Archer-Intuitor-Selective-Qwen2.5-1.5B-2k-8k-batch64-no-kl-from-grpo_80'
 
-adv_estimator=intuitor
+adv_estimator=intuitor_selective
 
 # kl config - NO KL LOSS
 use_kl_in_reward=False
@@ -42,6 +41,10 @@ data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
 TEST_FILE=$data_dir/test/livecodebench_v5.json
 
+# When using resume_mode=auto, framework will automatically find the latest checkpoint in ${CKPTS_DIR}
+# This GRPO_CHECKPOINT_PATH is only used for initial model path config (line 93), but won't be used in auto resume mode
+GRPO_CHECKPOINT_PATH=./output/ArcherCodeR/Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl/global_step_80
+
 # Response generation
 n_resp_per_prompt=16
 temperature=1.0
@@ -59,16 +62,18 @@ actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 infer_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 offload=False
 
-echo "🚀 INTUITOR CONFIGURATION (NO KL LOSS - SIMPLE RAY):"
+echo "🚀 INTUITOR_SELECTIVE CONFIGURATION (FROM GRPO CHECKPOINT):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
 echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
 echo "⚡ Tensor parallel: ${gen_tp}"
-echo "🎯 Algorithm: Intuitor (self-certainty + livecodebench validation)"
+echo "🎯 Algorithm: Switching from GRPO to Intuitor Selective (Smart Training)"
+echo "🔄 Resume from: ${GRPO_CHECKPOINT_PATH}"
 echo "🎲 Validation sampling: n=${v_n}, do_sample=true, temperature=${v_temperature}"
 echo "❌ KL Loss: DISABLED"
+echo "⚡ Training Efficiency: ~50-60% compute (selective training)"
 
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
@@ -85,11 +90,11 @@ mkdir -p "${CKPTS_DIR}/eval"
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     data.reward_fn_key=data_source \
-    actor_rollout_ref.model.path="${MODEL_PATH}" \
+    actor_rollout_ref.model.path="${GRPO_CHECKPOINT_PATH}/hf_model" \
     actor_rollout_ref.model.use_fused_kernels=False \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.optim.lr=3e-6 \
+    actor_rollout_ref.actor.optim.lr=2e-6 \
     actor_rollout_ref.actor.optim.warmup_style=cosine \
     actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=0.1 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
@@ -136,7 +141,8 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.test_freq=10 \
     trainer.total_epochs=10 \
     trainer.default_local_dir="${CKPTS_DIR}" \
+    trainer.resume_mode=auto \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.max_actor_ckpt_to_keep=20 \
     +trainer.max_critic_ckpt_to_keep=20 \
-    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_intuitor.log
+    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_intuitor_selective.log
