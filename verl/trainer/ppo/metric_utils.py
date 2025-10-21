@@ -215,6 +215,58 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
             if "intuitor_selected_mask" in batch.non_tensor_batch
             else {}
         ),
+        # DACE (Difficulty-Aware Certainty Exploration) metrics
+        **(
+            {
+                # Certainty metrics (similar to INTUITOR)
+                "dace/certainty/mean": np.mean(batch.non_tensor_batch["dace_certainty"]),
+                "dace/certainty/max": np.max(batch.non_tensor_batch["dace_certainty"]),
+                "dace/certainty/min": np.min(batch.non_tensor_batch["dace_certainty"]),
+                "dace/certainty/std": np.std(batch.non_tensor_batch["dace_certainty"]),
+                # Difficulty metrics
+                "dace/difficulty/mean": np.mean(batch.non_tensor_batch["dace_difficulty"]),
+                "dace/difficulty/max": np.max(batch.non_tensor_batch["dace_difficulty"]),
+                "dace/difficulty/min": np.min(batch.non_tensor_batch["dace_difficulty"]),
+                "dace/difficulty/std": np.std(batch.non_tensor_batch["dace_difficulty"]),
+                # Alpha (adaptive coefficient) metrics
+                "dace/alpha/mean": np.mean(batch.non_tensor_batch["dace_alpha"]),
+                "dace/alpha/max": np.max(batch.non_tensor_batch["dace_alpha"]),
+                "dace/alpha/min": np.min(batch.non_tensor_batch["dace_alpha"]),
+                "dace/alpha/std": np.std(batch.non_tensor_batch["dace_alpha"]),
+                # Reward components
+                "dace/external_reward/mean": np.mean(batch.non_tensor_batch["dace_external_rewards"]),
+                "dace/external_reward/max": np.max(batch.non_tensor_batch["dace_external_rewards"]),
+                "dace/external_reward/min": np.min(batch.non_tensor_batch["dace_external_rewards"]),
+                "dace/external_reward/std": np.std(batch.non_tensor_batch["dace_external_rewards"]),
+                "dace/intrinsic_reward/mean": np.mean(batch.non_tensor_batch["dace_intrinsic_rewards"]),
+                "dace/intrinsic_reward/max": np.max(batch.non_tensor_batch["dace_intrinsic_rewards"]),
+                "dace/intrinsic_reward/min": np.min(batch.non_tensor_batch["dace_intrinsic_rewards"]),
+                "dace/intrinsic_reward/std": np.std(batch.non_tensor_batch["dace_intrinsic_rewards"]),
+                "dace/total_reward/mean": np.mean(batch.non_tensor_batch["dace_total_rewards"]),
+                "dace/total_reward/max": np.max(batch.non_tensor_batch["dace_total_rewards"]),
+                "dace/total_reward/min": np.min(batch.non_tensor_batch["dace_total_rewards"]),
+                "dace/total_reward/std": np.std(batch.non_tensor_batch["dace_total_rewards"]),
+                # Hard vs Easy task distribution
+                "dace/hard_task_count": batch.non_tensor_batch["dace_hard_task_mask"].sum(),
+                "dace/easy_task_count": batch.non_tensor_batch["dace_easy_task_mask"].sum(),
+                "dace/hard_task_ratio": batch.non_tensor_batch["dace_hard_task_mask"].sum() / len(batch.non_tensor_batch["dace_hard_task_mask"]),
+                "dace/easy_task_ratio": batch.non_tensor_batch["dace_easy_task_mask"].sum() / len(batch.non_tensor_batch["dace_easy_task_mask"]),
+                # Hard task specific metrics
+                "dace/hard_task_certainty_mean": np.mean(batch.non_tensor_batch["dace_certainty"][batch.non_tensor_batch["dace_hard_task_mask"]]) if batch.non_tensor_batch["dace_hard_task_mask"].sum() > 0 else 0.0,
+                "dace/hard_task_difficulty_mean": np.mean(batch.non_tensor_batch["dace_difficulty"][batch.non_tensor_batch["dace_hard_task_mask"]]) if batch.non_tensor_batch["dace_hard_task_mask"].sum() > 0 else 0.0,
+                "dace/hard_task_intrinsic_reward_mean": np.mean(batch.non_tensor_batch["dace_intrinsic_rewards"][batch.non_tensor_batch["dace_hard_task_mask"]]) if batch.non_tensor_batch["dace_hard_task_mask"].sum() > 0 else 0.0,
+                "dace/hard_task_external_reward_mean": np.mean(batch.non_tensor_batch["dace_external_rewards"][batch.non_tensor_batch["dace_hard_task_mask"]]) if batch.non_tensor_batch["dace_hard_task_mask"].sum() > 0 else 0.0,
+                # Easy task specific metrics
+                "dace/easy_task_certainty_mean": np.mean(batch.non_tensor_batch["dace_certainty"][batch.non_tensor_batch["dace_easy_task_mask"]]) if batch.non_tensor_batch["dace_easy_task_mask"].sum() > 0 else 0.0,
+                "dace/easy_task_difficulty_mean": np.mean(batch.non_tensor_batch["dace_difficulty"][batch.non_tensor_batch["dace_easy_task_mask"]]) if batch.non_tensor_batch["dace_easy_task_mask"].sum() > 0 else 0.0,
+                "dace/easy_task_intrinsic_reward_mean": np.mean(batch.non_tensor_batch["dace_intrinsic_rewards"][batch.non_tensor_batch["dace_easy_task_mask"]]) if batch.non_tensor_batch["dace_easy_task_mask"].sum() > 0 else 0.0,
+                "dace/easy_task_external_reward_mean": np.mean(batch.non_tensor_batch["dace_external_rewards"][batch.non_tensor_batch["dace_easy_task_mask"]]) if batch.non_tensor_batch["dace_easy_task_mask"].sum() > 0 else 0.0,
+                # Intrinsic reward contribution analysis
+                "dace/intrinsic_reward_contribution": np.abs(np.mean(batch.non_tensor_batch["dace_intrinsic_rewards"])) / (np.abs(np.mean(batch.non_tensor_batch["dace_total_rewards"])) + 1e-8),
+            }
+            if "dace_certainty" in batch.non_tensor_batch
+            else {}
+        ),
         # response length
         "response_length/mean": torch.mean(response_length).detach().item(),
         "response_length/max": torch.max(response_length).detach().item(),

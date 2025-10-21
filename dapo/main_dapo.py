@@ -160,7 +160,8 @@ class TaskRunner:
             max_resp_len=config.data.max_response_length,
             overlong_buffer_cfg=config.reward_model.overlong_buffer,
         )
-
+        print(f"🎯 dapo/main_dapo.py: Loaded custom reward function | {compute_score=} | {reward_fn=}")
+        
         # Note that we always use function-based RM for validation
         val_reward_fn = reward_manager_cls(
             tokenizer=tokenizer,

@@ -222,7 +222,7 @@ class RewardMathFn(RewardFn):
 def general_reward_fn(data_source: str, solution_str: str, ground_truth: Union[str, List[str]], extra_info=None, enable_llm=False, is_eval=False):
     reward_config = RewardConfig()
     reward_config.use_math_orm = enable_llm
-
+    # print(f"🎯 general_reward_fn: Loaded reward function | {data_source=} | {enable_llm=} | {reward_config=}")
     if data_source in ['code', 'livecodebench', 'livecodebench_v5', 'livecodebench_v6', 'humanevalplus']:
         reward_fn = RewardCodeFn(reward_config)
         problem_type = RewardType.CODE
