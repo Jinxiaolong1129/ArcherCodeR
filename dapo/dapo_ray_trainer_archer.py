@@ -7,7 +7,6 @@
 '''
 
 
-import os
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -29,16 +28,7 @@ from verl.trainer.ppo.metric_utils import (
     compute_timing_metrics,
     reduce_metrics,
 )
-from verl.trainer.ppo.ray_trainer import (
-    AdvantageEstimator,
-    RayPPOTrainer,
-    apply_kl_penalty,
-    compute_advantage,
-    compute_response_mask,
-)
-from verl.trainer.ppo.reward import compute_reward
-from verl.utils.profiler import marked_timer
-from verl.utils.rollout_skip import RolloutSkip
+from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, compute_response_mask
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,32 +39,6 @@ class RayDAPOTrainer(RayPPOTrainer):
     """
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
-
-    def compute_kl_related_metrics(self, batch: DataProto, metrics: dict, timing_raw: dict):
-        batch.batch["response_mask"] = compute_response_mask(batch)
-
-        # recompute old_log_probs
-        with marked_timer("old_log_prob", timing_raw, "blue"):
-            old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
-            entropys = old_log_prob.batch["entropys"]
-            response_masks = batch.batch["response_mask"]
-            loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
-            entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
-            old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
-            metrics.update(old_log_prob_metrics)
-            old_log_prob.batch.pop("entropys")
-            batch = batch.union(old_log_prob)
-
-        if self.use_reference_policy:
-            # compute reference log_prob
-            with marked_timer("ref", timing_raw, "olive"):
-                if not self.ref_in_actor:
-                    ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-                else:
-                    ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
-                batch = batch.union(ref_log_prob)
-
-        return batch
 
     def fit(self):
         """
@@ -96,7 +60,6 @@ class RayDAPOTrainer(RayPPOTrainer):
         )
 
         self.global_steps = 0
-        self.gen_steps = 0
 
         # load checkpoint before doing anything
         self._load_checkpoint()
@@ -115,10 +78,6 @@ class RayDAPOTrainer(RayPPOTrainer):
             tracking_logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):
                 return
-
-        if self.config.actor_rollout_ref.rollout.get("skip_rollout", False):
-            rollout_skip = RolloutSkip(self.config, self.actor_rollout_wg)
-            rollout_skip.wrap_generate_sequences()
             
         print("🎯 Starting main training loop setup of RayDAPOTrainer...")
         # add tqdm
@@ -126,16 +85,7 @@ class RayDAPOTrainer(RayPPOTrainer):
 
         # we start from step 1
         self.global_steps += 1
-        self.gen_steps += 1
         last_val_metrics = None
-
-        prev_step_profile = False
-        curr_step_profile = (
-            self.global_steps in self.config.global_profiler.steps
-            if self.config.global_profiler.steps is not None
-            else False
-        )
-        next_step_profile = False
 
         timing_raw = defaultdict(float)
         batch = None
@@ -190,13 +140,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                 
                 metrics = {}
 
-                with marked_timer("start_profile", timing_raw):
-                    self._start_profiling(
-                        not prev_step_profile and curr_step_profile
-                        if self.config.global_profiler.profile_continuous_steps
-                        else curr_step_profile
-                    )
-
                 # 数据加载阶段
                 data_load_start = time.time()
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict)
@@ -210,9 +153,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                     memory_reserved = torch.cuda.memory_reserved() / 1024**3   # GB
                     logger.debug(f"   💾 GPU Memory: {memory_allocated:.2f}GB allocated, {memory_reserved:.2f}GB reserved")
                 
-                # 数据预处理阶段 - 与官方实现保持一致
+                # 数据预处理阶段
                 preprocess_start = time.time()
-                # pop those keys for generation
                 if "multi_modal_data" in new_batch.non_tensor_batch.keys():
                     gen_batch = new_batch.pop(
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
@@ -223,57 +165,47 @@ class RayDAPOTrainer(RayPPOTrainer):
                         batch_keys=["input_ids", "attention_mask", "position_ids"],
                         non_tensor_batch_keys=["raw_prompt_ids"],
                     )
-                gen_batch_output = gen_batch.repeat(
-                    repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
-                )
                 preprocess_time = time.time() - preprocess_start
                 print(f"   🔧 Data preprocessing completed in {preprocess_time:.2f}s")
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
-                with marked_timer("step", timing_raw):
+                with _timer("step", timing_raw):
                     # === 生成阶段 ===
                     gen_start_time = time.time()
                     print(f"   🎲 Starting generation phase...")
-                    print(f"      🔄 Generating {self.config.actor_rollout_ref.rollout.n} responses per prompt (total: {len(gen_batch_output)} responses)...")
+                    print(f"      🔄 Generating {self.config.actor_rollout_ref.rollout.n} responses per prompt (total: {len(gen_batch) * self.config.actor_rollout_ref.rollout.n} responses)...")
                     
-                    with marked_timer("gen", timing_raw, "red"):
+                    with _timer("gen", timing_raw):
                         try:
-                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch_output)
+                            # breakpoint()
+                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
                             timing_raw.update(gen_batch_output.meta_info["timing"])
                             gen_batch_output.meta_info.pop("timing", None)
                             gen_time = time.time() - gen_start_time
-                            print(f"   ✅ Generation completed in {gen_time:.2f}s ({gen_time/len(gen_batch_output):.2f}s per response)")
+                            print(f"   ✅ Generation completed in {gen_time:.2f}s ({gen_time/len(gen_batch):.2f}s per prompt)")
                         except Exception as e:
                             print(f"   ❌ Generation failed: {e}")
                             raise
 
-                    # REMAX baseline (如果启用) - 与官方实现保持一致
+                    # REMAX baseline (如果启用)
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         remax_start_time = time.time()
                         logger.info(f"   🔄 Computing REMAX baseline...")
-                        with marked_timer("gen_max", timing_raw, "red"):
+                        with _timer("gen_max", timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
                             gen_baseline_batch.meta_info["do_sample"] = False
                             gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
 
                             new_batch = new_batch.union(gen_baseline_output)
-                            # compute reward model score on new_batch
-                            rm_scores = None
-                            if self.use_rm and "rm_scores" not in new_batch.batch.keys():
-                                rm_scores = self.rm_wg.compute_rm_score(new_batch)
-                                new_batch = new_batch.union(rm_scores)
-                            reward_baseline_tensor, _ = compute_reward(new_batch, self.reward_fn)
+                            reward_baseline_tensor = self.reward_fn(new_batch)
                             reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
 
-                            keys_to_pop = set(gen_baseline_output.batch.keys())
-                            if rm_scores is not None:
-                                keys_to_pop.update(rm_scores.batch.keys())
-                            new_batch.pop(batch_keys=list(keys_to_pop))
+                            new_batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
 
                             new_batch.batch["reward_baselines"] = reward_baseline_tensor
 
-                            del rm_scores, gen_baseline_batch, gen_baseline_output
+                            del gen_baseline_batch, gen_baseline_output
                         remax_time = time.time() - remax_start_time
                         print(f"   ✅ REMAX baseline computed in {remax_time:.2f}s")
 
@@ -286,23 +218,14 @@ class RayDAPOTrainer(RayPPOTrainer):
                     merge_time = time.time() - merge_start_time
                     print(f"   🔗 Batch merging completed in {merge_time:.2f}s, final batch size: {len(new_batch)}")
 
-                    # KL相关指标计算 (如果在奖励中使用KL)
-                    if self.config.algorithm.use_kl_in_reward:
-                        # We need these metrics for apply_kl_penalty if using kl in reward
-                        new_batch = self.compute_kl_related_metrics(new_batch, metrics, timing_raw)
-                        # otherwise, we will compute those after dynamic sampling
-
                     # === 奖励计算阶段 ===
                     reward_start_time = time.time()
                     print(f"   🏆 Starting reward computation phase...")
                     print(f"      📊 Computing rewards for {len(new_batch)} samples...")
                     
-                    with marked_timer("reward", timing_raw, "yellow"):
-                        # compute scores. Support both model and function-based.
-                        # We first compute the scores using reward model. Then, we call reward_fn to combine
-                        # the results from reward model and rule-based results.
-                        if self.use_rm and "rm_scores" not in new_batch.batch.keys():
-                            # we first compute reward model score
+                    with _timer("reward", timing_raw):
+                        # Reward Model 评分
+                        if self.use_rm:
                             rm_start_time = time.time()
                             print(f"      🤖 Computing reward model scores...")
                             try:
@@ -314,49 +237,21 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 print(f"      ❌ Reward model computation failed: {e}")
                                 raise
 
-                        # we combine with rule-based rm (保留自定义奖励函数逻辑)
+                        # Rule-based 奖励计算
                         rule_reward_start_time = time.time()
-                        logger.info(f"      📊 Computing rule-based rewards (Custom Reward)...")
+                        logger.info(f"      📊 Computing rule-based rewards (Wizard Reward)...")
                         reward_extra_infos_dict: dict[str, list]
                         try:
-                            # 使用官方的compute_reward接口，但保留自定义奖励函数
-                            reward_tensor, reward_extra_infos_dict = compute_reward(new_batch, self.reward_fn)
+                            reward_result = self.reward_fn(new_batch, return_dict=True)
+                            reward_tensor = reward_result["reward_tensor"]
+                            reward_extra_infos_dict = reward_result["reward_extra_info"]
                             rule_reward_time = time.time() - rule_reward_start_time
                             logger.info(f"      ✅ Rule-based rewards computed in {rule_reward_time:.2f}s ({rule_reward_time/len(new_batch)*1000:.1f}ms per sample)")
                         except Exception as e:
                             logger.error(f"      ❌ Error in reward_fn: {e}")
-                            # 回退到直接调用自定义奖励函数
-                            try:
-                                reward_result = self.reward_fn(new_batch, return_dict=True)
-                                reward_tensor = reward_result["reward_tensor"]
-                                reward_extra_infos_dict = reward_result["reward_extra_info"]
-                            except:
-                                reward_tensor = self.reward_fn(new_batch)
-                                reward_extra_infos_dict = {}
+                            reward_tensor = self.reward_fn(new_batch)
+                            reward_extra_infos_dict = {}
 
-                        new_batch.batch["token_level_scores"] = reward_tensor
-
-                        if reward_extra_infos_dict:
-                            new_batch.non_tensor_batch.update(
-                                {k: np.array(v) for k, v in reward_extra_infos_dict.items()}
-                            )
-
-                        # compute rewards. apply_kl_penalty if available
-                        if self.config.algorithm.use_kl_in_reward:
-                            kl_start_time = time.time()
-                            logger.debug(f"      🎯 Applying KL penalty...")
-                            new_batch, kl_metrics = apply_kl_penalty(
-                                new_batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
-                            )
-                            metrics.update(
-                                kl_metrics
-                            )  # TODO: This will be cleared if we use multiple genenration batches
-                            kl_time = time.time() - kl_start_time
-                            logger.debug(f"      ✅ KL penalty applied in {kl_time:.2f}s")
-                        else:
-                            new_batch.batch["token_level_rewards"] = new_batch.batch["token_level_scores"]
-
-                        # 显示奖励统计信息 (保留自定义日志)
                         sample_scores = reward_tensor.sum(-1).cpu().tolist()
                         positive_scores = sum(1 for score in sample_scores if score > 0)
                         zero_scores = sum(1 for score in sample_scores if score == 0)
@@ -367,88 +262,150 @@ class RayDAPOTrainer(RayPPOTrainer):
                         print(f"         ❌ Negative: {negative_scores} ({negative_scores/len(sample_scores)*100:.1f}%)")
                         print(f"         📊 Average: {np.mean(sample_scores):.3f}")
 
+                        # 思维词汇信息处理
+                        if "thinking_tokens_info" in reward_result:
+                            thinking_start_time = time.time()
+                            logger.debug(f"      🧠 Processing thinking tokens info...")
+                            thinking_tokens_infos_dict = reward_result["thinking_tokens_info"]
+                            for key_info in list(thinking_tokens_infos_dict.keys()):
+                                lst = thinking_tokens_infos_dict[key_info]
+                                assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
+                                for value, score in zip(lst, sample_scores):
+                                    if score > 0:
+                                        thinking_tokens_infos_dict['pos_'+key_info].append(value)
+                                    else:
+                                        thinking_tokens_infos_dict['neg_'+key_info].append(value)
+
+                            for key_info, lst in thinking_tokens_infos_dict.items():
+                                metrics[key_info] = sum(lst) / len(lst)
+                            thinking_time = time.time() - thinking_start_time
+                            logger.debug(f"      ✅ Thinking tokens processed in {thinking_time:.2f}s")
+
+                        # 重复信息处理
+                        if "repetition_info" in reward_result:
+                            repetition_start_time = time.time()
+                            logger.debug(f"      🔁 Processing repetition info...")
+                            repetition_infos_dict = reward_result["repetition_info"]
+                            for key_info in list(repetition_infos_dict.keys()):
+                                lst = repetition_infos_dict[key_info]
+                                assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
+                                for value, score in zip(lst, sample_scores):
+                                    if score > 0:
+                                        repetition_infos_dict['pos_'+key_info].append(value)
+                                    else:
+                                        repetition_infos_dict['neg_'+key_info].append(value)
+
+                            for key_info, lst in repetition_infos_dict.items():
+                                metrics[key_info] = sum(lst) / len(lst)
+                            repetition_time = time.time() - repetition_start_time
+                            logger.debug(f"      ✅ Repetition info processed in {repetition_time:.2f}s")
+
+                        new_batch.batch["token_level_scores"] = reward_tensor
+
+                        if reward_extra_infos_dict:
+                            new_batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
+
+                        # KL惩罚
+                        if self.config.algorithm.use_kl_in_reward:
+                            kl_start_time = time.time()
+                            logger.debug(f"      🎯 Applying KL penalty...")
+                            new_batch, kl_metrics = apply_kl_penalty(new_batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty)
+                            metrics.update(kl_metrics)  # TODO: This will be cleared if we use multiple genenration batches
+                            kl_time = time.time() - kl_start_time
+                            logger.debug(f"      ✅ KL penalty applied in {kl_time:.2f}s")
+                        else:
+                            new_batch.batch["token_level_rewards"] = new_batch.batch["token_level_scores"]
+
                     reward_total_time = time.time() - reward_start_time
                     logger.info(f"   ✅ Reward computation completed in {reward_total_time:.2f}s")
 
-                    # === 官方DAPO动态采样算法 ===
+                    # === 拒绝采样阶段 ===
                     sampling_start_time = time.time()
-                    logger.info(f"   🎯 Starting DAPO dynamic sampling...")
+                    logger.info(f"   🎯 Starting rejection sampling...")
                     
-                    if not self.config.algorithm.filter_groups.enable:
-                        batch = new_batch
-                        logger.info(f"   📊 Dynamic sampling disabled, using all {len(batch)} samples")
-                    else:  # NOTE: When prompts after filtering is less than train batch size,
-                        # we skip to the next generation batch
-                        metric_name = self.config.algorithm.filter_groups.metric
-                        if metric_name == "seq_final_reward":
-                            # Turn to numpy for easier filtering
-                            new_batch.non_tensor_batch["seq_final_reward"] = (
-                                new_batch.batch["token_level_rewards"].sum(dim=-1).numpy()
-                            )
-                        elif metric_name == "seq_reward":
-                            new_batch.non_tensor_batch["seq_reward"] = (
-                                new_batch.batch["token_level_scores"].sum(dim=-1).numpy()
-                            )
+                    # Group rewards by uid
+                    uids = new_batch.non_tensor_batch['uid']
+                    unique_uids = np.unique(uids)
+                    valid_mask = torch.ones(len(uids), dtype=torch.bool)
+                    solve_none = 0
+                    solve_all = 0
+                    for uid in unique_uids:
+                        uid_mask = uids == uid
+                        uid_rewards = reward_tensor[uid_mask].sum(-1)  # Sum rewards for each sequence
 
-                        # Collect the sequence reward for each trajectory
-                        prompt_uid2metric_vals = defaultdict(list)
-                        for uid, metric_val in zip(
-                            new_batch.non_tensor_batch["uid"], new_batch.non_tensor_batch[metric_name], strict=True
-                        ):
-                            prompt_uid2metric_vals[uid].append(metric_val)
+                        # Check if all rewards are 0 or all are 1 for this uid
+                        if (uid_rewards == 0).all():
+                            valid_mask[uid_mask] = False
+                            solve_none += 1
+                        elif (uid_rewards == 1).all():
+                            valid_mask[uid_mask] = False
+                            solve_all += 1
 
-                        prompt_uid2metric_std = {}
-                        for prompt_uid, metric_vals in prompt_uid2metric_vals.items():
-                            prompt_uid2metric_std[prompt_uid] = np.std(metric_vals)
+                    # Log to metrics
+                    metrics['batch/solve_none'] = solve_none
+                    metrics['batch/solve_all'] = solve_all
+                    metrics['batch/valid'] = len(unique_uids) - solve_all - solve_none
+                    valid_prompts = len(unique_uids) - solve_all - solve_none
+                    logger.info(f"   📊 Rejection sampling results:")
+                    logger.info(f"      🎯 Valid prompts: {valid_prompts}/{len(unique_uids)} ({valid_prompts/len(unique_uids)*100:.1f}%)")
+                    logger.info(f"      ❌ Solve none: {solve_none} ({solve_none/len(unique_uids)*100:.1f}%)")
+                    logger.info(f"      ✅ Solve all: {solve_all} ({solve_all/len(unique_uids)*100:.1f}%)")
 
-                        kept_prompt_uids = [
-                            uid
-                            for uid, std in prompt_uid2metric_std.items()
-                            if std > 0 or len(prompt_uid2metric_vals[uid]) == 1
-                        ]
-                        num_prompt_in_batch += len(kept_prompt_uids)
+                    if self.config.trainer.rejection_sample:
+                        # If no valid samples remain, skip this batch and get a new one
+                        if not valid_mask.any():
+                            logger.warning(f"   ⚠️  No valid samples remaining, skipping batch...")
+                            continue
+                        # Filter batch to keep only valid samples
+                        batch = new_batch[valid_mask]
+                        logger.info(f"   ✅ Filtered to {len(batch)} valid samples for training")
 
-                        kept_traj_idxs = []
-                        for idx, traj_from_prompt_uid in enumerate(new_batch.non_tensor_batch["uid"]):
-                            if traj_from_prompt_uid in kept_prompt_uids:
-                                kept_traj_idxs.append(idx)
+                    # 长度过滤
+                    length_filter_start = time.time()
+                    max_response_length = batch.batch['responses'].shape[-1]
+                    response_mask = batch.batch['attention_mask'][:, -max_response_length:]
+                    response_length = response_mask.sum(-1).float()
+                    response_clip_mask = ~torch.ge(response_length, max_response_length)
+                    metrics['batch/clip_overlong'] = len(batch) - response_clip_mask.sum()
+                    within_limit = response_clip_mask.sum().item()
+                    logger.debug(f"   📏 Response length check: {within_limit}/{len(batch)} samples within length limit")
+                    
+                    if self.config.trainer.enable_overlong_filter:
+                        batch = batch[response_clip_mask]
+                        logger.debug(f"   ✂️  Filtered overlong responses, remaining: {len(batch)} samples")
 
-                        new_batch = new_batch[kept_traj_idxs]
-                        batch = new_batch if batch is None else DataProto.concat([batch, new_batch])
+                    # 批次大小调整
+                    def get_sorted_indices(lst):
+                        return [index for index, _ in sorted(enumerate(lst), key=lambda x: x[1])]
+                    sorted_indices = torch.tensor(get_sorted_indices(batch.non_tensor_batch['index']))
+                    batch.reorder(sorted_indices)
 
-                        prompt_bsz = self.config.data.train_batch_size
-                        if num_prompt_in_batch < prompt_bsz:
-                            logger.info(f"   📊 Dynamic sampling: {num_prompt_in_batch} < {prompt_bsz} prompts")
-                            max_num_gen_batches = self.config.algorithm.filter_groups.max_num_gen_batches
-                            if max_num_gen_batches <= 0 or num_gen_batches < max_num_gen_batches:
-                                logger.info(f"   🔄 Continue generating (batch {num_gen_batches})...")
-                                self.gen_steps += 1
-                                is_last_step = self.global_steps >= self.total_training_steps
-                                continue
-                            else:
-                                raise ValueError(
-                                    f"{num_gen_batches=} >= {max_num_gen_batches=}."
-                                    + " Generated too many. Please check if your data are too difficult."
-                                    + " You could also try set max_num_gen_batches=0 to enable endless trials."
-                                )
-                        else:
-                            # Align the batch
-                            traj_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
-                            batch = batch[:traj_bsz]
-                            logger.info(f"   ✅ Dynamic sampling completed: {len(batch)} samples selected")
+                    # Round down to the nearest multiple of world size
+                    num_trainer_replicas = self.actor_rollout_wg.world_size
+                    if batch.batch['input_ids'].shape[0] < num_trainer_replicas and num_trainer_replicas/batch.batch['input_ids'].shape[0] <= 2:
+                        batch = batch.repeat(repeat_times=math.ceil(num_trainer_replicas/batch.batch['input_ids'].shape[0]), interleave=False)
 
+                    max_batch_size = (batch.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
+                    if not max_batch_size:
+                        logger.warning(f"   ⚠️  Batch size too small for {num_trainer_replicas} replicas, skipping...")
+                        continue
+                    batch = batch[:max_batch_size]
+                    final_batch_size = len(batch)
+                    logger.info(f"   ✅ Final training batch size: {final_batch_size} samples")
                     sampling_time = time.time() - sampling_start_time
-                    logger.info(f"   ✅ DAPO dynamic sampling completed in {sampling_time:.2f}s")
+                    logger.info(f"   ✅ Rejection sampling completed in {sampling_time:.2f}s")
 
-                    # === 更新阶段 ===
-                    # Balance the number of valid tokens across DP ranks.
-                    # NOTE: This usually changes the order of data in the `batch`,
-                    # which won't affect the advantage calculation (since it's based on uid),
-                    # but might affect the loss calculation (due to the change of mini-batching).
-                    # TODO: Decouple the DP balancing and mini-batching.
+                    # === 模型更新阶段 ===
                     update_start_time = time.time()
-                    logger.info(f"   🔄 Starting model update phase with {len(batch)} samples...")
+                    logger.info(f"   🔄 Starting model update phase with {final_batch_size} samples...")
 
+                    # Response mask计算
+                    mask_start_time = time.time()
+                    batch.batch["response_mask"] = compute_response_mask(batch)
+                    mask_time = time.time() - mask_start_time
+                    logger.debug(f"      🎭 Response mask computed in {mask_time:.2f}s")
+
+                    # Batch balancing
                     if self.config.trainer.balance_batch:
                         balance_start_time = time.time()
                         logger.debug(f"      ⚖️  Balancing batch across DP ranks...")
@@ -459,28 +416,46 @@ class RayDAPOTrainer(RayPPOTrainer):
                     # compute global_valid tokens
                     batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
 
-                    if not self.config.algorithm.use_kl_in_reward:
-                        batch = self.compute_kl_related_metrics(batch, metrics, timing_raw)
+                    # Old log probabilities计算
+                    old_logprob_start_time = time.time()
+                    logger.debug(f"      📊 Computing old log probabilities...")
+                    with _timer("old_log_prob", timing_raw):
+                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                        entropys = old_log_prob.batch["entropys"]
+                        response_masks = batch.batch["response_mask"]
+                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+                        entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
+                        old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
+                        metrics.update(old_log_prob_metrics)
+                        old_log_prob.batch.pop("entropys")
+                        batch = batch.union(old_log_prob)
+                    old_logprob_time = time.time() - old_logprob_start_time
+                    logger.debug(f"      ✅ Old log probabilities computed in {old_logprob_time:.2f}s")
 
-                    # compute values
+                    # Reference policy
+                    if self.use_reference_policy:
+                        ref_start_time = time.time()
+                        logger.debug(f"      🔗 Computing reference log probabilities...")
+                        with _timer("ref", timing_raw):
+                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
+                            batch = batch.union(ref_log_prob)
+                        ref_time = time.time() - ref_start_time
+                        logger.debug(f"      ✅ Reference log probabilities computed in {ref_time:.2f}s")
+
+                    # Critic values
                     if self.use_critic:
                         values_start_time = time.time()
                         logger.debug(f"      💰 Computing values...")
-                        with marked_timer("values", timing_raw, "cyan"):
+                        with _timer("values", timing_raw):
                             values = self.critic_wg.compute_values(batch)
                             batch = batch.union(values)
                         values_time = time.time() - values_start_time
                         logger.debug(f"      ✅ Values computed in {values_time:.2f}s")
 
-                    # Compute rollout IS weights and mismatch metrics (inherited from RayPPOTrainer)
-                    batch, is_metrics = self.compute_rollout_importance_weights_and_add_to_batch(batch)
-                    # IS and mismatch metrics already have mismatch/ prefix
-                    metrics.update(is_metrics)
-
                     # Advantages计算
                     adv_start_time = time.time()
                     logger.debug(f"      🎯 Computing advantages...")
-                    with marked_timer("adv", timing_raw, "brown"):
+                    with _timer("adv", timing_raw):
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)
                         batch = compute_advantage(
@@ -490,16 +465,20 @@ class RayDAPOTrainer(RayPPOTrainer):
                             lam=self.config.algorithm.lam,
                             num_repeat=self.config.actor_rollout_ref.rollout.n,
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                            config=self.config.algorithm
                         )
+                        if "inverse_pair" in batch.meta_info:
+                            metrics["batch/inverse_pair"] = batch.meta_info["inverse_pair"] / metrics["batch/valid"]
                     adv_time = time.time() - adv_start_time
                     logger.debug(f"      ✅ Advantages computed in {adv_time:.2f}s")
 
-                    # update critic
+                    # === 关键的训练更新部分 ===
+                    # Critic更新
                     if self.use_critic:
                         critic_update_start = time.time()
                         logger.info(f"      🎓 Updating critic network...")
-                        logger.info(f"         📊 Processing {len(batch)} samples for critic training")
-                        with marked_timer("update_critic", timing_raw, "pink"):
+                        logger.info(f"         📊 Processing {final_batch_size} samples for critic training")
+                        with _timer("update_critic", timing_raw):
                             critic_output = self.critic_wg.update_critic(batch)
                         critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
                         metrics.update(critic_output_metrics)
@@ -510,22 +489,21 @@ class RayDAPOTrainer(RayPPOTrainer):
                         if 'critic/loss' in critic_output_metrics:
                             logger.info(f"         📉 Critic loss: {critic_output_metrics['critic/loss']:.4f}")
 
-                    # implement critic warmup
+                    # Actor更新 - 这是最关键的训练更新部分
                     if self.config.trainer.critic_warmup <= self.global_steps:
-                        # update actor
                         actor_update_start = time.time()
                         logger.info(f"      🎭 Updating actor network (main training update)...")
-                        logger.info(f"         📊 Processing {len(batch)} samples for actor training")
+                        logger.info(f"         📊 Processing {final_batch_size} samples for actor training")
                         logger.info(f"         🔄 PPO epochs: {self.config.actor_rollout_ref.actor.ppo_epochs}")
                         logger.info(f"         📦 Mini-batch size: {self.config.actor_rollout_ref.actor.ppo_mini_batch_size}")
                         
                         # 计算会有多少个mini-batches
                         ppo_mini_batch_size = self.config.actor_rollout_ref.actor.ppo_mini_batch_size
-                        num_mini_batches = math.ceil(len(batch) / ppo_mini_batch_size)
+                        num_mini_batches = math.ceil(final_batch_size / ppo_mini_batch_size)
                         total_ppo_updates = num_mini_batches * self.config.actor_rollout_ref.actor.ppo_epochs
                         logger.info(f"         🔢 Will perform {total_ppo_updates} mini-batch updates ({num_mini_batches} mini-batches × {self.config.actor_rollout_ref.actor.ppo_epochs} epochs)")
                         
-                        with marked_timer("update_actor", timing_raw, "red"):
+                        with _timer("update_actor", timing_raw):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
@@ -541,59 +519,36 @@ class RayDAPOTrainer(RayPPOTrainer):
                             logger.info(f"         📈 Learning rate: {actor_output_metrics['actor/lr']:.6f}")
                         if 'actor/entropy' in actor_output_metrics:
                             logger.info(f"         🎲 Entropy: {actor_output_metrics['actor/entropy']:.4f}")
+                            
                     else:
                         remaining_warmup = self.config.trainer.critic_warmup - self.global_steps
                         logger.info(f"      ⏳ Critic warmup phase: {self.global_steps}/{self.config.trainer.critic_warmup} (remaining: {remaining_warmup} steps)")
 
-                    # Log rollout generations if enabled
-                    rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
-                    if rollout_data_dir:
-                        self._log_rollout_data(batch, reward_extra_infos_dict, timing_raw, rollout_data_dir)
-
                     update_total_time = time.time() - update_start_time
                     logger.info(f"   ✅ Model update completed in {update_total_time:.2f}s")
 
-                # validate
-                if (
-                    self.val_reward_fn is not None
-                    and self.config.trainer.test_freq > 0
-                    and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
-                ):
-                    val_start_time = time.time()
-                    logger.info(f"   🧪 Running validation...")
-                    with marked_timer("testing", timing_raw, "green"):
-                        val_metrics: dict = self._validate()
-                        if is_last_step:
-                            last_val_metrics = val_metrics
-                    metrics.update(val_metrics)
-                    val_time = time.time() - val_start_time
-                    logger.info(f"   ✅ Validation completed in {val_time:.2f}s")
+                    # 检查点保存
+                    if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
+                        save_start_time = time.time()
+                        logger.info(f"   💾 Saving checkpoint at step {self.global_steps}...")
+                        with _timer("save_checkpoint", timing_raw):
+                            self._save_checkpoint()
+                        save_time = time.time() - save_start_time
+                        logger.info(f"   ✅ Checkpoint saved in {save_time:.2f}s")
 
-                if self.config.trainer.save_freq > 0 and (
-                    is_last_step or self.global_steps % self.config.trainer.save_freq == 0
-                ):
-                    save_start_time = time.time()
-                    logger.info(f"   💾 Saving checkpoint at step {self.global_steps}...")
-                    with marked_timer("save_checkpoint", timing_raw, "green"):
-                        self._save_checkpoint()
-                    save_time = time.time() - save_start_time
-                    logger.info(f"   ✅ Checkpoint saved in {save_time:.2f}s")
+                    # 验证
+                    if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
+                        val_start_time = time.time()
+                        logger.info(f"   🧪 Running validation...")
+                        with _timer("testing", timing_raw):
+                            val_metrics: dict = self._validate()
+                            if is_last_step:
+                                last_val_metrics = val_metrics
+                        metrics.update(val_metrics)
+                        val_time = time.time() - val_start_time
+                        logger.info(f"   ✅ Validation completed in {val_time:.2f}s")
 
-                with marked_timer("stop_profile", timing_raw):
-                    next_step_profile = (
-                        self.global_steps + 1 in self.config.global_profiler.steps
-                        if self.config.global_profiler.steps is not None
-                        else False
-                    )
-                    self._stop_profiling(
-                        curr_step_profile and not next_step_profile
-                        if self.config.global_profiler.profile_continuous_steps
-                        else curr_step_profile
-                    )
-                    prev_step_profile = curr_step_profile
-                    curr_step_profile = next_step_profile
-
-                # collect metrics
+                # 指标收集
                 metrics_start_time = time.time()
                 metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
@@ -630,7 +585,6 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 progress_bar.update(1)
                 self.global_steps += 1
-                self.gen_steps += 1
                 
             epoch_total_time = time.time() - epoch_start_time
             epoch_samples_per_second = epoch_samples_processed / epoch_total_time
@@ -640,13 +594,3 @@ class RayDAPOTrainer(RayPPOTrainer):
             logger.info(f"⚡ Average speed: {epoch_samples_per_second:.2f} samples/second")
             logger.info(f"📈 Completed {batch_count}/{train_dataloader_size} batches")
             logger.info(f"==================================================================")
-        
-        # check if last step checkpint exists (官方实现的最后检查点保存逻辑)
-        checkpoint_dir = os.path.join(self.config.trainer.default_local_dir, f"global_step_{self.global_steps}")
-        if not os.path.exists(checkpoint_dir):
-            # save last step checkpoint
-            timing_raw = defaultdict(float)
-            with marked_timer("save_checkpoint", timing_raw, "green"):
-                self._save_checkpoint()
-            metrics = {f"timing/{k}": v for k, v in timing_raw.items()}
-            tracking_logger.log(data=metrics, step=self.global_steps)
