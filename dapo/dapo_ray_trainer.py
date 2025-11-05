@@ -129,14 +129,6 @@ class RayDAPOTrainer(RayPPOTrainer):
         self.gen_steps += 1
         last_val_metrics = None
 
-        prev_step_profile = False
-        curr_step_profile = (
-            self.global_steps in self.config.global_profiler.steps
-            if self.config.global_profiler.steps is not None
-            else False
-        )
-        next_step_profile = False
-
         timing_raw = defaultdict(float)
         batch = None
         num_prompt_in_batch = 0
@@ -189,13 +181,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                 print(f"⏰ ETA: {eta_minutes:.1f} minutes ({eta_minutes/60:.1f} hours)")
                 
                 metrics = {}
-
-                with marked_timer("start_profile", timing_raw):
-                    self._start_profiling(
-                        not prev_step_profile and curr_step_profile
-                        if self.config.global_profiler.profile_continuous_steps
-                        else curr_step_profile
-                    )
 
                 # 数据加载阶段
                 data_load_start = time.time()
@@ -578,20 +563,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                         self._save_checkpoint()
                     save_time = time.time() - save_start_time
                     logger.info(f"   ✅ Checkpoint saved in {save_time:.2f}s")
-
-                with marked_timer("stop_profile", timing_raw):
-                    next_step_profile = (
-                        self.global_steps + 1 in self.config.global_profiler.steps
-                        if self.config.global_profiler.steps is not None
-                        else False
-                    )
-                    self._stop_profiling(
-                        curr_step_profile and not next_step_profile
-                        if self.config.global_profiler.profile_continuous_steps
-                        else curr_step_profile
-                    )
-                    prev_step_profile = curr_step_profile
-                    curr_step_profile = next_step_profile
 
                 # collect metrics
                 metrics_start_time = time.time()
