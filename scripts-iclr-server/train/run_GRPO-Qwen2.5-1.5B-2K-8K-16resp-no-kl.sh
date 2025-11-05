@@ -14,7 +14,7 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl'
+exp_name='Archer-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-wenbo_server'
 
 adv_estimator=grpo
 
@@ -96,7 +96,7 @@ mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
 # 使用标准的 verl.trainer.main_ppo 入口点进行 GRPO 训练
-/home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
+/scr/xiaolong/miniconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -104,7 +104,6 @@ mkdir -p "${CKPTS_DIR}/eval"
     data.truncation='error' \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
-    data.gen_batch_size=${gen_prompt_bsz} \
     data.train_batch_size=${train_prompt_bsz} \
     data.reward_fn_key=data_source \
     actor_rollout_ref.rollout.n=${n_resp_per_prompt} \
@@ -166,13 +165,12 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=-1 \
-    reward_model.enable=False \
     reward_model.reward_manager=wizard \
-    reward_model.use_general_reward=True \
-    reward_model.overlong_buffer.enable=${enable_overlong_buffer} \
-    reward_model.overlong_buffer.len=${overlong_buffer_len} \
-    reward_model.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
-    reward_model.max_resp_len=${max_response_length} \
+    +reward_model.reward_kwargs.max_resp_len=${max_response_length} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.enable=${enable_overlong_buffer} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.len=${overlong_buffer_len} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor=${overlong_penalty_factor} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.log=False \
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \

@@ -89,7 +89,7 @@ echo "📊 Sampling Metric: ${dynamic_sampling_metric}"
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m dapo.main_dapo \
+/scr/xiaolong/miniconda3/envs/archer/bin/python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
