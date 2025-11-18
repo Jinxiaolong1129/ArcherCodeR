@@ -79,12 +79,13 @@ class DataParallelPPOActor(BasePPOActor):
         )
         self.device_name = get_device_name()
 
-    def _forward_micro_batch(self, micro_batch, temperature, calculate_entropy=False, calculate_self_certainty=False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _forward_micro_batch(self, micro_batch, temperature, calculate_entropy=False, calculate_self_certainty=False, calculate_prob_disparity=False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Returns:
             entropy: # (bs, response_len) or None
             log_probs: # (bs, response_len)
             self_certainty: # (bs, response_len) or None
+            prob_disparity: # (bs, response_len) or None
         """
         response_length = micro_batch["responses"].size(-1)
         multi_modal_inputs = {}
@@ -99,6 +100,7 @@ class DataParallelPPOActor(BasePPOActor):
             position_ids = micro_batch["position_ids"]
             entropy = None
             self_certainty = None
+            prob_disparity = None
             if position_ids.dim() == 3:  # qwen2vl mrope
                 position_ids = position_ids.transpose(0, 1)  # (bsz, 3, seqlen) -> (3, bsz, seqlen)
 
@@ -182,6 +184,10 @@ class DataParallelPPOActor(BasePPOActor):
                     # compute self-certainty
                     if calculate_self_certainty:
                         self_certainty_rmpad = verl_F.self_certainty_from_logits(logits_rmpad)  # ((total_nnz / sp) + pad)
+                    
+                    # compute probability disparity
+                    if calculate_prob_disparity:
+                        prob_disparity_rmpad = verl_F.prob_disparity_from_logits(logits_rmpad)  # ((total_nnz / sp) + pad)
 
                 # gather log_prob if sp > 1
                 if self.use_ulysses_sp:
@@ -206,6 +212,13 @@ class DataParallelPPOActor(BasePPOActor):
                             unpad_dim=0,
                             padding_size=pad_size,
                         )
+                    if calculate_prob_disparity:
+                        prob_disparity_rmpad = gather_outpus_and_unpad(
+                            prob_disparity_rmpad,
+                            gather_dim=0,
+                            unpad_dim=0,
+                            padding_size=pad_size,
+                        )
                 # pad back to (bsz, seqlen)
                 if calculate_entropy:
                     full_entropy = pad_input(
@@ -217,6 +230,13 @@ class DataParallelPPOActor(BasePPOActor):
                 if calculate_self_certainty:
                     full_self_certainty = pad_input(
                         hidden_states=self_certainty_rmpad.unsqueeze(-1),
+                        indices=indices,
+                        batch=batch_size,
+                        seqlen=seqlen,
+                    )
+                if calculate_prob_disparity:
+                    full_prob_disparity = pad_input(
+                        hidden_states=prob_disparity_rmpad.unsqueeze(-1),
                         indices=indices,
                         batch=batch_size,
                         seqlen=seqlen,
@@ -233,6 +253,8 @@ class DataParallelPPOActor(BasePPOActor):
                     entropy = full_entropy.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
                 if calculate_self_certainty:
                     self_certainty = full_self_certainty.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
+                if calculate_prob_disparity:
+                    prob_disparity = full_prob_disparity.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
                 log_probs = full_log_probs.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
 
             else:  # not using rmpad and no ulysses sp
@@ -262,8 +284,10 @@ class DataParallelPPOActor(BasePPOActor):
                         entropy = verl_F.entropy_from_logits(logits)  # (bsz, response_length)
                     if calculate_self_certainty:
                         self_certainty = verl_F.self_certainty_from_logits(logits)  # (bsz, response_length)
+                    if calculate_prob_disparity:
+                        prob_disparity = verl_F.prob_disparity_from_logits(logits)  # (bsz, response_length)
 
-            return entropy, log_probs, self_certainty
+            return entropy, log_probs, self_certainty, prob_disparity
 
     def _optimizer_step(self):
         assert self.config.grad_clip is not None
@@ -284,7 +308,7 @@ class DataParallelPPOActor(BasePPOActor):
         return grad_norm
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
-    def compute_log_prob(self, data: DataProto, calculate_entropy=False, calculate_self_certainty=False):
+    def compute_log_prob(self, data: DataProto, calculate_entropy=False, calculate_self_certainty=False, calculate_prob_disparity=False):
         """Compute the log probability of the responses given input_ids, attention_mask and position_ids
 
         Args:
@@ -300,7 +324,9 @@ class DataParallelPPOActor(BasePPOActor):
                 ``responses``:  tensor of shape [batch_size, response_length]. torch.int64.
 
         Returns:
-            torch.Tensor: the log_prob tensor
+            torch.Tensor: the log_prob tensor, entropy tensor (if calculate_entropy), 
+                         self_certainty tensor (if calculate_self_certainty),
+                         prob_disparity tensor (if calculate_prob_disparity)
         """
         # set to eval
         self.actor_module.eval()
@@ -327,29 +353,36 @@ class DataParallelPPOActor(BasePPOActor):
         log_probs_lst = []
         entropy_lst = []
         self_certainty_lst = []
+        prob_disparity_lst = []
         for micro_batch in micro_batches:
             if isinstance(micro_batch, DataProto):
                 micro_batch = {**micro_batch.batch, **micro_batch.non_tensor_batch}
             with torch.no_grad():
-                entropy, log_probs, self_certainty = self._forward_micro_batch(
+                entropy, log_probs, self_certainty, prob_disparity = self._forward_micro_batch(
                     micro_batch, 
                     temperature=temperature, 
                     calculate_entropy=calculate_entropy,
-                    calculate_self_certainty=calculate_self_certainty
+                    calculate_self_certainty=calculate_self_certainty,
+                    calculate_prob_disparity=calculate_prob_disparity
                 )
             log_probs_lst.append(log_probs)
             if calculate_entropy:
                 entropy_lst.append(entropy)
             if calculate_self_certainty:
                 self_certainty_lst.append(self_certainty)
+            if calculate_prob_disparity:
+                prob_disparity_lst.append(prob_disparity)
 
         log_probs = torch.concat(log_probs_lst, dim=0)
         entropys = None
         self_certaintys = None
+        prob_disparitys = None
         if calculate_entropy:
             entropys = torch.concat(entropy_lst, dim=0)
         if calculate_self_certainty:
             self_certaintys = torch.concat(self_certainty_lst, dim=0)
+        if calculate_prob_disparity:
+            prob_disparitys = torch.concat(prob_disparity_lst, dim=0)
         if use_dynamic_bsz:
             indices = list(itertools.chain.from_iterable(indices))
             assert len(indices) == log_probs.size(0), f"{len(indices)} vs. {log_probs.size()}"
@@ -359,8 +392,10 @@ class DataParallelPPOActor(BasePPOActor):
                 entropys = entropys[revert_indices]
             if calculate_self_certainty:
                 self_certaintys = self_certaintys[revert_indices]
+            if calculate_prob_disparity:
+                prob_disparitys = prob_disparitys[revert_indices]
 
-        return log_probs, entropys, self_certaintys
+        return log_probs, entropys, self_certaintys, prob_disparitys
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
     def update_policy(self, data: DataProto):
@@ -434,11 +469,12 @@ class DataParallelPPOActor(BasePPOActor):
                     calculate_entropy = True
                     # if entropy_coeff != 0:
                     #     calculate_entropy = True
-                    entropy, log_prob, _ = self._forward_micro_batch(
+                    entropy, log_prob, _, _ = self._forward_micro_batch(
                         micro_batch=data, 
                         temperature=temperature, 
                         calculate_entropy=calculate_entropy,
-                        calculate_self_certainty=False
+                        calculate_self_certainty=False,
+                        calculate_prob_disparity=False
                     )
 
                     # high entropy token mask

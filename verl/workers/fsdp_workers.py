@@ -688,13 +688,14 @@ class ActorRolloutRefWorker(Worker):
         # perform recompute log_prob
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
-            output, entropys, self_certaintys = self.actor.compute_log_prob(
+            output, entropys, self_certaintys, prob_disparitys = self.actor.compute_log_prob(
                 data=data, 
                 calculate_entropy=True, 
-                calculate_self_certainty=True
+                calculate_self_certainty=True,
+                calculate_prob_disparity=True
             )
             output = DataProto.from_dict(
-                tensors={"old_log_probs": output, "entropys": entropys, "self_certaintys": self_certaintys},
+                tensors={"old_log_probs": output, "entropys": entropys, "self_certaintys": self_certaintys, "prob_disparitys": prob_disparitys},
                 meta_info={"temperature": self.config.rollout.temperature},
             )
             output = self.ulysses_sharding_manager.postprocess_data(output)

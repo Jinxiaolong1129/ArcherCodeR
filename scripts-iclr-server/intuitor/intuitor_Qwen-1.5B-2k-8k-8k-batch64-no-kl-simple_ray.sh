@@ -16,7 +16,7 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-new'
+exp_name='Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple'
 
 adv_estimator=intuitor
 
@@ -73,7 +73,7 @@ echo "❌ KL Loss: DISABLED"
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-/home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=${adv_estimator} \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \

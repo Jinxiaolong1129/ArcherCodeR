@@ -16,9 +16,9 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl'
+exp_name='Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple'
 
-adv_estimator=intuitor
+adv_estimator=token_entropy
 
 # kl config - NO KL LOSS
 use_kl_in_reward=False
@@ -59,14 +59,14 @@ actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 infer_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 offload=False
 
-echo "🚀 INTUITOR CONFIGURATION (NO KL LOSS - SIMPLE RAY):"
+echo "🚀 TOKEN-LEVEL ENTROPY CONFIGURATION (NO KL LOSS - SIMPLE RAY):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
 echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
 echo "⚡ Tensor parallel: ${gen_tp}"
-echo "🎯 Algorithm: Intuitor (self-certainty + livecodebench validation)"
+echo "🎯 Algorithm: Token-Level Entropy (negative average entropy)"
 echo "🎲 Validation sampling: n=${v_n}, do_sample=true, temperature=${v_temperature}"
 echo "❌ KL Loss: DISABLED"
 
@@ -139,4 +139,5 @@ mkdir -p "${CKPTS_DIR}/eval"
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.max_actor_ckpt_to_keep=20 \
     +trainer.max_critic_ckpt_to_keep=20 \
-    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_intuitor.log
+    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_token_entropy.log
+

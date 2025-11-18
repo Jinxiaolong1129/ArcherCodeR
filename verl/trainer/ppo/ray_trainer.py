@@ -640,8 +640,77 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
+    elif adv_estimator == AdvantageEstimator.TRAJECTORY_ENTROPY:
+        # Trajectory-Level Entropy: r(x, y) = 1/|y| * Σ log π_θ(y_t|x, y_<t)
+        print('=' * 80)
+        print('🚀 TRAJECTORY-LEVEL ENTROPY ADVANTAGE ESTIMATION')
+        print('=' * 80)
+        
+        old_log_probs = data.batch["old_log_probs"]
+        response_mask = data.batch["response_mask"]
+        
+        print(f"📊 Input Data:")
+        print(f"  ├─ old_log_probs.shape: {old_log_probs.shape}")
+        print(f"  ├─ response_mask.shape: {response_mask.shape}")
+        print(f"  └─ Number of unique prompts: {len(set(data.non_tensor_batch['uid']))}")
+        
+        advantages, returns = core_algos.compute_trajectory_entropy_advantage(
+            old_log_probs=old_log_probs,
+            response_mask=response_mask,
+            index=data.non_tensor_batch["uid"],
+            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+        )
+        
+        data.batch["advantages"] = advantages
+        data.batch["returns"] = returns
+    elif adv_estimator == AdvantageEstimator.TOKEN_ENTROPY:
+        # Token-Level Entropy: r(x, y) = -1/|y| * Σ H(π_θ(·|x, y_<t))
+        print('=' * 80)
+        print('🚀 TOKEN-LEVEL ENTROPY ADVANTAGE ESTIMATION')
+        print('=' * 80)
+        
+        entropys = data.batch["entropys"]
+        response_mask = data.batch["response_mask"]
+        
+        print(f"📊 Input Data:")
+        print(f"  ├─ entropys.shape: {entropys.shape}")
+        print(f"  ├─ response_mask.shape: {response_mask.shape}")
+        print(f"  └─ Number of unique prompts: {len(set(data.non_tensor_batch['uid']))}")
+        
+        advantages, returns = core_algos.compute_token_entropy_advantage(
+            entropys=entropys,
+            response_mask=response_mask,
+            index=data.non_tensor_batch["uid"],
+            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+        )
+        
+        data.batch["advantages"] = advantages
+        data.batch["returns"] = returns
+    elif adv_estimator == AdvantageEstimator.PROB_DISPARITY:
+        # Probability Disparity: r(x, y) = 1/M * Σ [max π_θ - second_max π_θ]
+        print('=' * 80)
+        print('🚀 PROBABILITY DISPARITY ADVANTAGE ESTIMATION')
+        print('=' * 80)
+        
+        prob_disparitys = data.batch["prob_disparitys"]
+        response_mask = data.batch["response_mask"]
+        
+        print(f"📊 Input Data:")
+        print(f"  ├─ prob_disparitys.shape: {prob_disparitys.shape}")
+        print(f"  ├─ response_mask.shape: {response_mask.shape}")
+        print(f"  └─ Number of unique prompts: {len(set(data.non_tensor_batch['uid']))}")
+        
+        advantages, returns = core_algos.compute_prob_disparity_advantage(
+            prob_disparitys=prob_disparitys,
+            response_mask=response_mask,
+            index=data.non_tensor_batch["uid"],
+            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+        )
+        
+        data.batch["advantages"] = advantages
+        data.batch["returns"] = returns
     else:
-        # handle all other adv estimator type other than GAE, GRPO, INTUITOR, and DACE
+        # handle all other adv estimator type other than GAE, GRPO, INTUITOR, DACE, and the three new methods
         adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
         
         adv_kwargs = {
@@ -727,6 +796,9 @@ class RayPPOTrainer:
             AdvantageEstimator.INTUITOR_SELECTIVE,
             AdvantageEstimator.INTUITOR_ENTROPY,
             AdvantageEstimator.DACE,
+            AdvantageEstimator.TRAJECTORY_ENTROPY,
+            AdvantageEstimator.TOKEN_ENTROPY,
+            AdvantageEstimator.PROB_DISPARITY,
         ]:
             self.use_critic = False
         else:
@@ -1598,7 +1670,9 @@ class RayPPOTrainer:
                         entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
                         old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
                         metrics.update(old_log_prob_metrics)
-                        old_log_prob.batch.pop("entropys")
+                        # Only remove entropys if not needed by advantage estimator
+                        if self.config.algorithm.adv_estimator != AdvantageEstimator.TOKEN_ENTROPY:
+                            old_log_prob.batch.pop("entropys")
                         batch = batch.union(old_log_prob)
 
                         if "rollout_log_probs" in batch.batch.keys():

@@ -90,6 +90,9 @@ class AdvantageEstimator(str, Enum):
     INTUITOR_SELECTIVE = "intuitor_selective"
     INTUITOR_ENTROPY = "intuitor_entropy"
     DACE = "dace"
+    TRAJECTORY_ENTROPY = "trajectory_entropy"
+    TOKEN_ENTROPY = "token_entropy"
+    PROB_DISPARITY = "prob_disparity"
 
 
 class AdaptiveKLController:
@@ -520,6 +523,298 @@ def compute_dace_advantage(
     print('-' * 80)
     print('✅ DACE ADVANTAGE COMPUTATION COMPLETED')
     print('=' * 80)
+    
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.TRAJECTORY_ENTROPY)
+def compute_trajectory_entropy_advantage(
+    old_log_probs: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    **kwargs,
+):
+    """
+    Compute advantage using Trajectory-Level Entropy as intrinsic reward.
+    
+    Formula: r(x, y) = 1/|y| * Σ log π_θ(y_t|x, y_<t)
+    
+    This is the average log probability of the generated sequence, which measures
+    how likely the model thinks its own generation is. Higher values (closer to 0)
+    indicate the model is more confident in the trajectory.
+    
+    Args:
+        old_log_probs: (torch.Tensor)
+            Log probabilities of generated tokens, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 TRAJECTORY-LEVEL ENTROPY ADVANTAGE COMPUTATION')
+    print('=' * 80)
+    
+    with torch.no_grad():
+        # Convert response_mask to float for proper division
+        response_mask_float = response_mask.float()
+        
+        # Compute trajectory-level entropy: mean log probability
+        # log_probs are typically negative (since probabilities are in [0,1])
+        # Higher (closer to 0) = more confident trajectory
+        masked_log_probs = old_log_probs * response_mask_float  # [B, T]
+        sum_log_probs = masked_log_probs.sum(dim=-1)  # [B]
+        count = response_mask_float.sum(dim=-1) + epsilon  # [B]
+        trajectory_entropy = sum_log_probs / count  # [B] - average log prob
+        
+        print(f"📊 Trajectory Entropy Statistics:")
+        print(f"  ├─ Batch size: {old_log_probs.shape[0]}")
+        print(f"  ├─ Response length: {old_log_probs.shape[1]}")
+        print(f"  ├─ Trajectory entropy range: [{trajectory_entropy.min().item():.4f}, {trajectory_entropy.max().item():.4f}]")
+        print(f"  ├─ Trajectory entropy mean: {trajectory_entropy.mean().item():.4f}")
+        print(f"  └─ Note: Higher (closer to 0) = more confident, Lower (more negative) = less confident")
+        
+        # Use trajectory entropy as scores for GRPO-style advantage computation
+        scores = trajectory_entropy
+        
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+        
+        print(f"📈 Advantage Statistics:")
+        print(f"  ├─ Advantage range: [{scores.min().item():.4f}, {scores.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {scores.mean().item():.4f}")
+        print(f"  ├─ Positive advantages: {(scores > 0).sum().item()}/{bsz}")
+        print(f"  └─ Negative advantages: {(scores < 0).sum().item()}/{bsz}")
+        print('=' * 80)
+    
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.TOKEN_ENTROPY)
+def compute_token_entropy_advantage(
+    entropys: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    **kwargs,
+):
+    """
+    Compute advantage using Token-Level Entropy as intrinsic reward.
+    
+    Formula: r(x, y) = -1/|y| * Σ H(π_θ(·|x, y_<t))
+    
+    This uses the negative average entropy of the token distributions. Lower entropy
+    (more peaked distribution) indicates higher confidence. By negating, we reward
+    confident (low entropy) generations.
+    
+    Args:
+        entropys: (torch.Tensor)
+            Token-level entropy values, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 TOKEN-LEVEL ENTROPY ADVANTAGE COMPUTATION')
+    print('=' * 80)
+    
+    with torch.no_grad():
+        # Convert response_mask to float for proper division
+        response_mask_float = response_mask.float()
+        
+        # Compute negative average token-level entropy
+        # Entropy is typically positive (0 to log(vocab_size))
+        # Lower entropy = more confident = higher reward (after negation)
+        masked_entropy = entropys * response_mask_float  # [B, T]
+        sum_entropy = masked_entropy.sum(dim=-1)  # [B]
+        count = response_mask_float.sum(dim=-1) + epsilon  # [B]
+        avg_entropy = sum_entropy / count  # [B] - average entropy
+        token_entropy_reward = -avg_entropy  # [B] - negate to reward low entropy
+        
+        print(f"📊 Token Entropy Statistics:")
+        print(f"  ├─ Batch size: {entropys.shape[0]}")
+        print(f"  ├─ Response length: {entropys.shape[1]}")
+        print(f"  ├─ Average entropy range: [{avg_entropy.min().item():.4f}, {avg_entropy.max().item():.4f}]")
+        print(f"  ├─ Average entropy mean: {avg_entropy.mean().item():.4f}")
+        print(f"  ├─ Token entropy reward range: [{token_entropy_reward.min().item():.4f}, {token_entropy_reward.max().item():.4f}]")
+        print(f"  ├─ Token entropy reward mean: {token_entropy_reward.mean().item():.4f}")
+        print(f"  └─ Note: Higher reward (less negative) = lower entropy = more confident")
+        
+        # Use token entropy reward as scores for GRPO-style advantage computation
+        scores = token_entropy_reward
+        
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+        
+        print(f"📈 Advantage Statistics:")
+        print(f"  ├─ Advantage range: [{scores.min().item():.4f}, {scores.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {scores.mean().item():.4f}")
+        print(f"  ├─ Positive advantages: {(scores > 0).sum().item()}/{bsz}")
+        print(f"  └─ Negative advantages: {(scores < 0).sum().item()}/{bsz}")
+        print('=' * 80)
+    
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.PROB_DISPARITY)
+def compute_prob_disparity_advantage(
+    prob_disparitys: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    **kwargs,
+):
+    """
+    Compute advantage using Probability Disparity as intrinsic reward.
+    
+    Formula: r(x, y) = 1/M * Σ [max π_θ(a_t|...) - second_max π_θ(a_t|...)]
+    
+    This measures the gap between the top-1 and top-2 probabilities at each token.
+    Larger disparity indicates the model is more confident in its top choice.
+    
+    Args:
+        prob_disparitys: (torch.Tensor)
+            Token-level probability disparity values, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 PROBABILITY DISPARITY ADVANTAGE COMPUTATION')
+    print('=' * 80)
+    
+    with torch.no_grad():
+        # Convert response_mask to float for proper division
+        response_mask_float = response_mask.float()
+        
+        # Compute average probability disparity
+        # Higher disparity = more confident (clear winner)
+        masked_disparity = prob_disparitys * response_mask_float  # [B, T]
+        sum_disparity = masked_disparity.sum(dim=-1)  # [B]
+        count = response_mask_float.sum(dim=-1) + epsilon  # [B]
+        avg_disparity = sum_disparity / count  # [B] - average disparity
+        
+        print(f"📊 Probability Disparity Statistics:")
+        print(f"  ├─ Batch size: {prob_disparitys.shape[0]}")
+        print(f"  ├─ Response length: {prob_disparitys.shape[1]}")
+        print(f"  ├─ Average disparity range: [{avg_disparity.min().item():.4f}, {avg_disparity.max().item():.4f}]")
+        print(f"  ├─ Average disparity mean: {avg_disparity.mean().item():.4f}")
+        print(f"  └─ Note: Higher disparity = more confident (larger gap between top-1 and top-2)")
+        
+        # Use probability disparity as scores for GRPO-style advantage computation
+        scores = avg_disparity
+        
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+        
+        print(f"📈 Advantage Statistics:")
+        print(f"  ├─ Advantage range: [{scores.min().item():.4f}, {scores.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {scores.mean().item():.4f}")
+        print(f"  ├─ Positive advantages: {(scores > 0).sum().item()}/{bsz}")
+        print(f"  └─ Negative advantages: {(scores < 0).sum().item()}/{bsz}")
+        print('=' * 80)
     
     return advantages, advantages
 

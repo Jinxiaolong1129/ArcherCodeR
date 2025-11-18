@@ -96,7 +96,7 @@ mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
 # 使用标准的 verl.trainer.main_ppo 入口点进行 GRPO 训练
-/scr/xiaolong/miniconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_dapo_ori \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \

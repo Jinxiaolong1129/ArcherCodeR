@@ -174,6 +174,32 @@ def self_certainty_from_logits(logits: torch.Tensor):
     return self_certainty
 
 
+def prob_disparity_from_logits(logits: torch.Tensor):
+    """Calculate probability disparity from logits.
+    
+    Probability disparity is the difference between the top-1 and top-2 probabilities.
+    Higher values indicate higher confidence (clear winner).
+    
+    Formula: max π_θ(a_t|...) - second_max π_θ(a_t|...)
+    
+    Args:
+        logits (torch.Tensor): Model logits of shape (..., vocab_size)
+        
+    Returns:
+        torch.Tensor: Probability disparity values of shape logits.shape[:-1]
+    """
+    # Convert logits to probabilities
+    probs = torch.softmax(logits, dim=-1)  # (..., vocab_size)
+    
+    # Get top-2 probabilities
+    top2_probs, _ = torch.topk(probs, k=2, dim=-1)  # (..., 2)
+    
+    # Compute disparity: top-1 - top-2
+    disparity = top2_probs[..., 0] - top2_probs[..., 1]  # (...,)
+    
+    return disparity
+
+
 def self_certainty_from_logits_new(logits: torch.Tensor):
     """Top-1 vs. top-2 probability margin as a confidence score."""
     probs = torch.nn.functional.softmax(logits, dim=-1)
