@@ -65,9 +65,10 @@ def zipngram(text: str, ngram_size: int):
 def parallel_compute_score(evaluation_func, response_str, ground_truth, data_sources, extra_info, enable_llm=False, is_eval=False, max_workers=64):
     import concurrent.futures
     import time
+    import gc
     
     # Timeout for individual score computation (per response)
-    SCORE_TIMEOUT = 360  # 2 minutes per response
+    SCORE_TIMEOUT = 360  # 6 minutes per response
     
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {
@@ -88,6 +89,8 @@ def parallel_compute_score(evaluation_func, response_str, ground_truth, data_sou
                 print(f"        ❌ Error computing score for sequence {index}: {str(e)[:100]}...")
                 results[index] = 0.0  # Default score for error
 
+    # Force garbage collection to clean up any leaked resources from child processes
+    gc.collect()
     return [results.get(i, 0.0) for i in range(len(response_str))]
 
 
@@ -199,18 +202,18 @@ class WizardRewardManager:
         MAX_BATCH_NGRAMS = 100000  # Limit total n-grams in batch
         TIMEOUT_PER_SEQUENCE = 5.0  # 5 seconds timeout per sequence
 
-        print(f"        📊 Processing {len(sequences_str)} sequences for repetition detection (ngram_size={ngram_size})...")
+        # print(f"        📊 Processing {len(sequences_str)} sequences for repetition detection (ngram_size={ngram_size})...")
 
         for idx, sequence in enumerate(sequences_str):
-            if idx % 10 == 0 and idx > 0:
-                print(f"        📈 Processed {idx}/{len(sequences_str)} sequences for repetition...")
+            # if idx % 10 == 0 and idx > 0:
+            #     print(f"        📈 Processed {idx}/{len(sequences_str)} sequences for repetition...")
             
             sequence_start_time = time.time()
             
             try:
                 # Truncate overly long sequences to prevent memory issues
                 if len(sequence) > MAX_SEQUENCE_LENGTH:
-                    print(f"        ⚠️  Sequence {idx} too long ({len(sequence)} chars), truncating to {MAX_SEQUENCE_LENGTH}")
+                    # print(f"        ⚠️  Sequence {idx} too long ({len(sequence)} chars), truncating to {MAX_SEQUENCE_LENGTH}")
                     sequence = sequence[:MAX_SEQUENCE_LENGTH]
                 
                 ngrams_counts = defaultdict(int)
@@ -219,7 +222,7 @@ class WizardRewardManager:
                 
                 # Skip if too many n-grams (likely infinite repetition)
                 if total_ngrams > MAX_NGRAMS_PER_SEQUENCE:
-                    print(f"        ⚠️  Sequence {idx} has too many n-grams ({total_ngrams}), skipping detailed analysis")
+                    # print(f"        ⚠️  Sequence {idx} has too many n-grams ({total_ngrams}), skipping detailed analysis")
                     repetition_ratios.append(1.0)  # Assume high repetition
                     most_repeated.append(total_ngrams // ngram_size)  # Rough estimate
                     continue
@@ -236,12 +239,12 @@ class WizardRewardManager:
                 for ng in ngrams:
                     # Check timeout for each sequence
                     if time.time() - sequence_start_time > TIMEOUT_PER_SEQUENCE:
-                        print(f"        ⏰ Sequence {idx} timeout, using partial results")
+                        # print(f"        ⏰ Sequence {idx} timeout, using partial results")
                         break
                     
                     # Limit batch n-grams to prevent memory explosion
                     if len(batch_ngrams_counts) > MAX_BATCH_NGRAMS:
-                        print(f"        ⚠️  Batch n-grams limit reached, skipping batch tracking")
+                        # print(f"        ⚠️  Batch n-grams limit reached, skipping batch tracking")
                         batch_ngrams_counts.clear()  # Clear to free memory
                     
                     ng_with_id = (f"Seq_{idx}: ",) + ng

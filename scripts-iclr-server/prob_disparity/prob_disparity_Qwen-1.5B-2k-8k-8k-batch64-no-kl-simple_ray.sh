@@ -134,10 +134,8 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.experiment_name="${exp_name}" \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
-    +trainer.max_actor_ckpt_to_keep=20 \
-    +trainer.max_critic_ckpt_to_keep=20 \
     trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_prob_disparity.log
 

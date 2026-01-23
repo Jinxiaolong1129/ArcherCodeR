@@ -90,7 +90,8 @@ def run_test(in_outs, test=None, debug=False, timeout=15):
     otherwise it'll just return an input and output pair.
     """
     # Disable functionalities that can make destructive changes to the test.
-    reliability_guard()
+    # Set memory limit to 1GB to prevent runaway memory consumption and stack overflow
+    reliability_guard(maximum_memory_bytes=1 * 1024 * 1024 * 1024)
 
     if debug:
         print(f"start = {datetime.now().time()}")
@@ -110,7 +111,7 @@ def run_test(in_outs, test=None, debug=False, timeout=15):
         raise AssertionError("should not happen: test code is none")
     elif test is not None:
         results = []
-        sol = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(6*10**5)\n"  # noqa: E501
+        sol = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(10000)\n"  # noqa: E501
         if debug:
             print(f"loading test code = {datetime.now().time()}")
 
@@ -571,7 +572,13 @@ def reliability_guard(maximum_memory_bytes=None):
         resource.setrlimit(resource.RLIMIT_AS, (maximum_memory_bytes, maximum_memory_bytes))
         resource.setrlimit(resource.RLIMIT_DATA, (maximum_memory_bytes, maximum_memory_bytes))
         if platform.uname().system != "Darwin":
-            resource.setrlimit(resource.RLIMIT_STACK, (maximum_memory_bytes, maximum_memory_bytes))
+            # Set stack limit to 64MB to prevent stack overflow from deep recursion
+            stack_limit = min(64 * 1024 * 1024, maximum_memory_bytes)
+            try:
+                resource.setrlimit(resource.RLIMIT_STACK, (stack_limit, stack_limit))
+            except ValueError:
+                soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
+                resource.setrlimit(resource.RLIMIT_STACK, (min(stack_limit, hard), hard))
 
     faulthandler.disable()
 

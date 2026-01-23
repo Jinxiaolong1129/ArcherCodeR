@@ -11,6 +11,7 @@ import numpy as np
 import os
 import re
 import subprocess
+import sys
 import time
 import select
 import shutil
@@ -50,7 +51,7 @@ def code_exec(code, stdin: str = None, timeout=30):
             with NamedTemporaryFile(dir="/tmp", suffix=".py") as tmp:
                 tmp.write(code.encode())
                 tmp.flush()
-                command.extend(["python", tmp.name])
+                command.extend([sys.executable, tmp.name])
                 result = subprocess.run(command,
                                         cwd=tmpdir,
                                         input=stdin.encode() if stdin else None,
@@ -121,6 +122,7 @@ def compute_score(solution_str, ground_truth, data_source='', extro_info=[], is_
 
 
 def grade_answer_code(solution_code, ground_truth, data_source, extro_info=[], is_eval=False, debug=False):
+    # print(f"grade_answer_code: {solution_code = }, {ground_truth = }, {data_source = }, {extro_info = }, {is_eval = }, {debug = }")
     t_start = time.time()
 
     ground_truth = json.loads(ground_truth)

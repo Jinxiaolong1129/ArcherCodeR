@@ -1,0 +1,531 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+'''
+@Time    :   2025/06/17 19:21:12
+@Author  :   wangjiakang
+@File    :   wizard.py
+'''
+
+import re
+from collections import defaultdict, Counter
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import torch
+from tqdm import tqdm
+from typing import Callable, Optional
+
+from verl import DataProto
+from verl.utils.reward_score import default_compute_score
+from verl.workers.reward_manager import register
+
+# 思考与推理 (Thinking and Reasoning)：主动认知过程，如分析、推断、假设。Token数量：25个
+thinking_and_reasoning = ["analyze", "analyzing", "analysis", "cogitate", "cogitation", "conclude", "conclusion", "deduce", "deduction", "determine", "determining", "determination", "hypothesize", "infer", "inference", "logic", "logical", "reason", "reasoning", "speculate", "speculation", "think", "thinking", "thought", "theorize"]
+
+# 计划与策略 (Planning and Strategy)：制定计划、方法、预测或策略。Token数量：26个
+planning_and_strategy = ["algorithm", "algorithmic", "approach", "approaches", "deliberate", "deliberation", "forecast", "forecasting", "method", "methods", "plan", "planning", "plans", "predict", "prediction", "process", "processing", "scheme", "scheming", "solution", "solve", "solving", "strategy", "strategize", "tactic", "tactics"]
+
+# 评估与验证 (Evaluation and Verification)：判断、评估或验证信息。Token数量：12个
+evaluation_and_verification = ["assess", "assessment", "evaluate", "evaluation", "judge", "judgment", "rationalize", "rationalization", "validate", "validation", "verify", "verification"]
+
+# 决策与问题解决 (Decision Making and Problem Solving)：做选择、解决难题、处理疑问。Token数量：18个
+decision_making = ["choose", "choosing", "decide", "deciding", "decision", "dilemma", "doubt", "issue", "option", "options", "problem", "query", "queries", "question", "resolve", "resolution", "select", "selecting"]
+
+# 反思与回顾 (Reflection and Contemplation)：回顾、深思或权衡经验。Token数量：14个
+reflection_and_contemplation = ["contemplate", "contemplation", "muse", "musing", "ponder", "pondering", "reflect", "reflection", "retrospect", "retrospection", "review", "reviewing", "weigh", "weighing"]
+
+# 概念与理论 (Concepts and Theories)：抽象概念、想法、模型或原则。Token数量：16个
+concepts_and_theories = ["concept", "concepts", "hypothesis", "hypotheses", "idea", "ideas", "model", "models", "notion", "notions", "paradox", "paradoxes", "principle", "principles", "theory", "theories"]
+
+# 逻辑连接与可能性 (Logical Connectives and Possibility)：逻辑连接词、推理过渡词，或表示可能性的副词。Token数量：29个
+logical_connectives = ["alternatively", "although", "and", "because", "but", "either", "even", "hence", "however", "if", "just", "maybe", "nevertheless", "neither", "nor", "only", "or", "perhaps", "possibly", "probably", "since", "so", "still", "then", "therefore", "though", "thus", "while", "yet"]
+
+
+def normalize_and_tokenize(text: str) -> list:
+    """
+    Convert text to lowercase, remove punctuation, and tokenize.
+    Returns a list of words.
+    """
+    # Convert to lowercase
+    text = text.lower()
+    # Replace non-alphanumeric characters with spaces
+    text = re.sub(r"[^\w\s]", " ", text)
+    # Collapse multiple whitespaces
+    text = re.sub(r"\s+", " ", text).strip()
+    # Tokenize by splitting on whitespace
+    return text.split()
+
+
+def zipngram(text: str, ngram_size: int):
+    words = text.lower().split()
+    if len(words) < ngram_size:
+        return []
+    return list(zip(*[words[i:] for i in range(ngram_size)]))
+
+
+def parallel_compute_score(
+    evaluation_func,
+    response_str,
+    ground_truth,
+    data_sources,
+    extra_info,
+    enable_llm=False,
+    is_eval=False,
+    max_workers=64,
+    debug_save_path=None,
+):
+    """
+    对齐 wenbo 版本的并行打分逻辑，并保留调试样本的保存。
+    """
+    import concurrent.futures
+    import time
+    import json
+    import os
+
+    SCORE_TIMEOUT = 360  # 单样本超时（秒）
+    DEBUG_SAMPLES = 10
+    success_samples = []
+    fail_samples = []
+
+    debug_dir = "/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/debug_samples"
+    os.makedirs(debug_dir, exist_ok=True)
+
+    print(f"        🔬 Starting parallel_compute_score with {len(response_str)} samples...", flush=True)
+    print(f"        🔬 Data sources sample: {data_sources[:3] if data_sources else 'EMPTY'}", flush=True)
+
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                evaluation_func,
+                data_sources[index],
+                response_str[index],
+                ground_truth[index],
+                None,
+                enable_llm,
+                is_eval,
+            ): index
+            for index in range(len(response_str))
+        }
+        results = {}
+
+        for future in as_completed(futures, timeout=SCORE_TIMEOUT * len(response_str)):
+            index = futures[future]
+            try:
+                result = future.result(timeout=SCORE_TIMEOUT)
+                results[index] = float(result) if result is not None else 0.0
+            except concurrent.futures.TimeoutError:
+                print(f"        ⏰ Score computation timeout for sequence {index}", flush=True)
+                results[index] = 0.0
+                if len(fail_samples) < DEBUG_SAMPLES:
+                    fail_samples.append(
+                        {
+                            "index": index,
+                            "data_source": data_sources[index],
+                            "error": "TIMEOUT",
+                            "response_preview": response_str[index][:500] if response_str[index] else "EMPTY",
+                            "result": 0.0,
+                        }
+                    )
+                continue
+            except Exception as e:
+                error_msg = str(e)
+                print(f"        ❌ Error computing score for sequence {index}: {error_msg[:300]}...", flush=True)
+                results[index] = 0.0
+                if len(fail_samples) < DEBUG_SAMPLES:
+                    fail_samples.append(
+                        {
+                            "index": index,
+                            "data_source": data_sources[index],
+                            "error": error_msg[:1000],
+                            "response_preview": response_str[index][:500] if response_str[index] else "EMPTY",
+                            "result": 0.0,
+                        }
+                    )
+                continue
+
+            # 收集调试样本
+            sample_info = {
+                "index": index,
+                "data_source": data_sources[index],
+                "response_preview": response_str[index][:1000] if response_str[index] else "EMPTY",
+                "response_length": len(response_str[index]) if response_str[index] else 0,
+                "ground_truth": str(ground_truth[index])[:500] if ground_truth[index] else "EMPTY",
+                "result": results[index],
+            }
+            if results[index] > 0:
+                if len(success_samples) < DEBUG_SAMPLES:
+                    success_samples.append(sample_info)
+            else:
+                if len(fail_samples) < DEBUG_SAMPLES:
+                    fail_samples.append(sample_info)
+
+    # 汇总统计
+    result_values = [results.get(i, 0.0) for i in range(len(response_str))]
+    positive_count = sum(1 for r in result_values if r > 0)
+    print(
+        f"        📊 Score stats: positive={positive_count}/{len(response_str)}, "
+        f"avg={sum(result_values)/len(result_values):.4f}",
+        flush=True,
+    )
+
+    # 保存调试信息
+    debug_file = os.path.join(debug_dir, f"reward_debug_{int(time.time())}.json")
+    try:
+        debug_info = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_samples": len(response_str),
+            "positive_count": positive_count,
+            "is_eval": is_eval,
+            "success_samples": success_samples,
+            "fail_samples": fail_samples,
+            "result_distribution": {
+                "zeros": sum(1 for r in result_values if r == 0.0),
+                "positives": sum(1 for r in result_values if r > 0),
+                "negatives": sum(1 for r in result_values if r < 0),
+            },
+        }
+        with open(debug_file, "w", encoding="utf-8") as f:
+            json.dump(debug_info, f, indent=2, ensure_ascii=False)
+        print(f"        💾 Debug samples saved to: {debug_file}", flush=True)
+    except Exception as e:
+        print(f"        ⚠️ Failed to save debug samples: {str(e)[:200]}", flush=True)
+
+    # 保存失败样本的完整信息（仅前三个）
+    if fail_samples:
+        fail_file = os.path.join(debug_dir, f"failed_samples_{int(time.time())}.json")
+        try:
+            detailed_fails = []
+            for i, fs in enumerate(fail_samples[:3]):
+                idx = fs["index"]
+                detailed_fails.append(
+                    {
+                        **fs,
+                        "full_response": response_str[idx] if idx < len(response_str) else "N/A",
+                        "full_ground_truth": ground_truth[idx] if idx < len(ground_truth) else "N/A",
+                    }
+                )
+            with open(fail_file, "w", encoding="utf-8") as f:
+                json.dump(detailed_fails, f, indent=2, ensure_ascii=False)
+            print(f"        💾 Detailed failed samples saved to: {fail_file}", flush=True)
+        except Exception as e:
+            print(f"        ⚠️ Failed to save detailed failed samples: {str(e)[:200]}", flush=True)
+
+    return result_values
+
+
+def parallel_compute_score_new(evaluation_func, response_str, ground_truth, data_sources, extra_info, enable_llm=False, is_eval=False, max_workers=64):
+    """
+    新版本的 parallel_compute_score，有固定全局超时，可能导致 reward 为 0
+    暂时保留但不使用
+    """
+    import concurrent.futures
+    from concurrent.futures import BrokenExecutor
+    import time
+    
+    # Timeout for individual score computation (per response)
+    SCORE_TIMEOUT = 120  # 2 minutes per response (reduced from 360)
+    GLOBAL_TIMEOUT = 600  # 10 minutes global timeout
+    
+    results = {i: 0.0 for i in range(len(response_str))}  # Initialize all to 0.0
+    
+    try:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(evaluation_func, data_sources[index], response_str[index], ground_truth[index], None, enable_llm, is_eval): index
+                for index in range(len(response_str))
+            }
+            
+            try:
+                for future in as_completed(futures, timeout=GLOBAL_TIMEOUT):
+                    index = futures[future]
+                    try:
+                        # Get result with timeout
+                        result = future.result(timeout=SCORE_TIMEOUT)
+                        if isinstance(result, (int, float, bool)):
+                            results[index] = float(result)
+                        elif isinstance(result, tuple) and len(result) > 0:
+                            results[index] = float(result[0])
+                        else:
+                            results[index] = 0.0
+                    except concurrent.futures.TimeoutError:
+                        print(f"        ⏰ Score computation timeout for sequence {index}")w
+                        results[index] = 0.0
+                    except Exception as e:
+                        error_msg = str(e)[:100]
+                        # Don't spam logs for common errors
+                        if "RecursionError" not in error_msg and "maximum recursion" not in error_msg:
+                            print(f"        ❌ Error computing score for sequence {index}: {error_msg}...")
+                        results[index] = 0.0
+            except concurrent.futures.TimeoutError:
+                print(f"        ⏰ Global timeout reached after {GLOBAL_TIMEOUT}s, returning partial results")
+            except BrokenExecutor as e:
+                print(f"        💀 ProcessPool crashed (likely due to segfault in generated code): {str(e)[:100]}")
+                # Return partial results, missing ones are already 0.0
+                
+    except Exception as e:
+        print(f"        💥 Critical error in parallel_compute_score: {str(e)[:200]}")
+        # Return all zeros on critical failure
+
+    return [results.get(i, 0.0) for i in range(len(response_str))]
+
+
+@register("wizard")
+class WizardRewardManager:
+    """The reward manager."""
+
+    def __init__(
+        self,
+        tokenizer,
+        num_examine,
+        compute_score=None,
+        reward_fn_key="data_source",
+        max_resp_len=None,
+        overlong_buffer_cfg=None,
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
+        self.compute_score = compute_score or default_compute_score
+        self.reward_fn_key = reward_fn_key
+        self.overlong_buffer_cfg = overlong_buffer_cfg
+        self.max_resp_len = max_resp_len
+
+        if self.overlong_buffer_cfg is not None:
+            assert self.max_resp_len is not None, f"max_resp_len must be provided if {overlong_buffer_cfg=}, but got None"
+
+    def verify(self, data, is_eval):
+        """
+        verify the batch and save as ``acc`` tensor
+        """
+        import time
+        print(f"        🔍 Starting verification phase...")
+        verify_start_time = time.time()
+        
+        # batched scoring
+        prompt_ids = data.batch['prompts']
+
+        response_ids = data.batch['responses']
+        sequences_str = self.tokenizer.batch_decode(response_ids, skip_special_tokens=True)
+        ground_truth = [data_item.non_tensor_batch['reward_model']['ground_truth'] for data_item in data]
+        data_sources = data.non_tensor_batch[self.reward_fn_key]
+        extra_info = data.non_tensor_batch.get('extra_info', None)
+
+        assert len(sequences_str) == len(ground_truth) == len(data_sources)
+        print(f"        📝 Decoded {len(sequences_str)} responses for scoring")
+
+        try:
+            print(f"        ⚙️  Starting parallel compute score...")
+            score_start_time = time.time()
+            scores = parallel_compute_score(
+                    self.compute_score,
+                    sequences_str,
+                    ground_truth,
+                    data_sources,
+                    extra_info=extra_info,
+                    enable_llm=False,
+                    is_eval=is_eval
+                )
+            assert len(scores) == len(sequences_str)
+            print(f"        ✅ Parallel compute score completed in {time.time() - score_start_time:.2f}s")
+
+        except Exception as e:
+            print(f"        ❌ Unexpected error in batched reward computing. Setting all as 0.: {e}")
+            scores = [0. for _ in range(len(sequences_str))]
+
+        print(f"        ✅ Verification completed in {time.time() - verify_start_time:.2f}s")
+        return scores
+
+    def calculate_thinking_tokens(self, data):
+        import time
+        print(f"        🧠 Starting thinking tokens calculation...")
+        thinking_start_time = time.time()
+        
+        response_ids = data.batch['responses']
+        sequences_str = self.tokenizer.batch_decode(response_ids, skip_special_tokens=True)
+        frequency_thinking_tokens = defaultdict(list)
+        
+        print(f"        🔤 Processing {len(sequences_str)} sequences for thinking tokens...")
+        
+        for idx, sequence in enumerate(sequences_str):
+            tokens = normalize_and_tokenize(sequence)
+            counts = Counter(tokens)
+            frequency_thinking_tokens['token/thinking_and_reasoning'].append(sum(counts[term] for term in thinking_and_reasoning))
+            frequency_thinking_tokens['token/planning_and_strategy'].append(sum(counts[term] for term in planning_and_strategy))
+            frequency_thinking_tokens['token/evaluation_and_verification'].append(sum(counts[term] for term in evaluation_and_verification))
+            frequency_thinking_tokens['token/decision_making'].append(sum(counts[term] for term in decision_making))
+            frequency_thinking_tokens['token/reflection_and_contemplation'].append(sum(counts[term] for term in reflection_and_contemplation))
+            frequency_thinking_tokens['token/concepts_and_theories'].append(sum(counts[term] for term in concepts_and_theories))
+            frequency_thinking_tokens['token/logical_connectives'].append(sum(counts[term] for term in logical_connectives))
+
+        print(f"        ✅ Thinking tokens calculation completed in {time.time() - thinking_start_time:.2f}s")
+        return frequency_thinking_tokens
+
+    def get_repetition_ratio(self, data):
+        import time
+        print(f"        🔁 Starting repetition ratio calculation...")
+        repetition_start_time = time.time()
+        
+        response_ids = data.batch['responses']
+        sequences_str = self.tokenizer.batch_decode(response_ids, skip_special_tokens=True)
+        repetition_ratios = []
+        most_repeated = []
+        batch_ngrams_counts = defaultdict(int)
+        ngram_size = 20
+        
+        # Safety limits to prevent infinite loops and memory issues
+        MAX_SEQUENCE_LENGTH = 50000  # Limit sequence length
+        MAX_NGRAMS_PER_SEQUENCE = 10000  # Limit number of n-grams processed per sequence
+        MAX_BATCH_NGRAMS = 100000  # Limit total n-grams in batch
+        TIMEOUT_PER_SEQUENCE = 5.0  # 5 seconds timeout per sequence
+
+        print(f"        📊 Processing {len(sequences_str)} sequences for repetition detection (ngram_size={ngram_size})...")
+
+        for idx, sequence in enumerate(sequences_str):
+            if idx % 10 == 0 and idx > 0:
+                print(f"        📈 Processed {idx}/{len(sequences_str)} sequences for repetition...")
+            
+            sequence_start_time = time.time()
+            
+            try:
+                # Truncate overly long sequences to prevent memory issues
+                if len(sequence) > MAX_SEQUENCE_LENGTH:
+                    print(f"        ⚠️  Sequence {idx} too long ({len(sequence)} chars), truncating to {MAX_SEQUENCE_LENGTH}")
+                    sequence = sequence[:MAX_SEQUENCE_LENGTH]
+                
+                ngrams_counts = defaultdict(int)
+                ngrams = zipngram(sequence, ngram_size)
+                total_ngrams = len(ngrams)
+                
+                # Skip if too many n-grams (likely infinite repetition)
+                if total_ngrams > MAX_NGRAMS_PER_SEQUENCE:
+                    print(f"        ⚠️  Sequence {idx} has too many n-grams ({total_ngrams}), skipping detailed analysis")
+                    repetition_ratios.append(1.0)  # Assume high repetition
+                    most_repeated.append(total_ngrams // ngram_size)  # Rough estimate
+                    continue
+                
+                if total_ngrams == 0:
+                    repetition_ratios.append(0.0)
+                    most_repeated.append(0.0)
+                    continue
+
+                seen_ngrams = set()
+                repeated_count = 0
+                processed_ngrams = 0
+                
+                for ng in ngrams:
+                    # Check timeout for each sequence
+                    if time.time() - sequence_start_time > TIMEOUT_PER_SEQUENCE:
+                        print(f"        ⏰ Sequence {idx} timeout, using partial results")
+                        break
+                    
+                    # Limit batch n-grams to prevent memory explosion
+                    if len(batch_ngrams_counts) > MAX_BATCH_NGRAMS:
+                        print(f"        ⚠️  Batch n-grams limit reached, skipping batch tracking")
+                        batch_ngrams_counts.clear()  # Clear to free memory
+                    
+                    ng_with_id = (f"Seq_{idx}: ",) + ng
+                    ngrams_counts[ng_with_id] += 1
+                    
+                    if len(batch_ngrams_counts) <= MAX_BATCH_NGRAMS:
+                        batch_ngrams_counts[ng_with_id] += 1
+                    
+                    if ng in seen_ngrams:
+                        repeated_count += 1
+                    else:
+                        seen_ngrams.add(ng)
+                    
+                    processed_ngrams += 1
+
+                # Calculate ratios based on processed n-grams
+                if processed_ngrams > 0:
+                    repetition_ratios.append(repeated_count / processed_ngrams)
+                    if ngrams_counts:
+                        most_repeated.append(max(ngrams_counts.values()))
+                    else:
+                        most_repeated.append(0.0)
+                else:
+                    repetition_ratios.append(0.0)
+                    most_repeated.append(0.0)
+                    
+            except Exception as e:
+                print(f"        ❌ Error processing sequence {idx}: {str(e)[:100]}...")
+                repetition_ratios.append(0.0)
+                most_repeated.append(0.0)
+                continue
+
+        print(f"        🔍 Analyzing batch-wide repetition patterns...")
+        if batch_ngrams_counts:
+            try:
+                batch_most_repeated = sorted(batch_ngrams_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+                for i, (ngram, count) in enumerate(batch_most_repeated):
+                    print(f"Batch Top-{i+1} Frequency: {count}")
+                    # Truncate very long n-grams for display
+                    ngram_str = ' '.join(ngram)
+                    if len(ngram_str) > 200:
+                        ngram_str = ngram_str[:200] + "..."
+                    print(f"N-gram: {ngram_str}")
+            except Exception as e:
+                print(f"        ⚠️  Error analyzing batch patterns: {str(e)[:100]}...")
+
+        print(f"        ✅ Repetition ratio calculation completed in {time.time() - repetition_start_time:.2f}s")
+        return defaultdict(list, {'token/maximum_frequency': most_repeated, 'token/repetition_ratio': repetition_ratios})
+
+
+    def __call__(self, data: DataProto, return_dict: bool = False, is_eval: bool = False):
+        """We will expand this function gradually based on the available datasets"""
+        import time
+        print(f"      🧙 Wizard Reward Manager called with {len(data)} samples")
+        wizard_start_time = time.time()
+
+        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+        if "rm_scores" in data.batch.keys():
+            print(f"      ⚡ Using existing rm_scores, skipping computation")
+            if return_dict:
+                return {"reward_tensor": data.batch["rm_scores"]}
+            else:
+                return data.batch["rm_scores"]
+
+        reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
+        reward_extra_info = defaultdict(list)
+
+        # batched scoring
+        prompt_length = data.batch['prompts'].shape[-1]
+        valid_response_length = data.batch['attention_mask'][:, prompt_length:].sum(dim=-1)
+        
+        print(f"      📏 Response length stats: avg={valid_response_length.float().mean():.1f}, max={valid_response_length.max()}, min={valid_response_length.min()}")
+        
+        scores = self.verify(data, is_eval)
+        thinking_tokens_info = self.calculate_thinking_tokens(data)
+        repetition_info = self.get_repetition_ratio(data)
+
+        print(f"      💰 Processing individual rewards...")
+        for i in range(len(data)):
+            reward_extra_info["acc"].append(float(scores[i]))
+            reward = scores[i]
+
+            if self.overlong_buffer_cfg and self.overlong_buffer_cfg.enable:
+                overlong_buffer_len = self.overlong_buffer_cfg.len
+                expected_len = self.max_resp_len - overlong_buffer_len
+                exceed_len = valid_response_length[i] - expected_len
+                overlong_penalty_factor = self.overlong_buffer_cfg.penalty_factor
+                overlong_reward = min(-exceed_len / overlong_buffer_len * overlong_penalty_factor, 0)
+                reward += overlong_reward
+                if self.overlong_buffer_cfg.log:
+                    reward_extra_info["overlong_reward"].append(overlong_reward)
+                    reward_extra_info["overlong"].append(overlong_reward < 0)
+
+            reward_tensor[i, valid_response_length[i].item() - 1] = reward
+
+        response_length_info = {"response_length": valid_response_length.cpu().tolist()}
+
+        print(f"      ✅ Wizard Reward Manager completed in {time.time() - wizard_start_time:.2f}s")
+        print(f"      📊 Final reward stats: avg={reward_tensor.sum(-1).mean():.3f}, positive_rewards={torch.sum(reward_tensor.sum(-1) > 0).item()}/{len(data)}")
+
+        if return_dict:
+            return {
+                "reward_tensor": reward_tensor,
+                "reward_extra_info": reward_extra_info,
+                "thinking_tokens_info": thinking_tokens_info,
+                "repetition_info": repetition_info,
+                "response_length_info": response_length_info,
+            }
+        else:
+            return reward_tensor

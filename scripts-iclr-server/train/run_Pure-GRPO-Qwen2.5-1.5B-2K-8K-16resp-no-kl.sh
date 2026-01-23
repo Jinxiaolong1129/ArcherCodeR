@@ -14,7 +14,7 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl'
+exp_name='Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-debug-v2'
 
 adv_estimator=grpo
 
@@ -168,11 +168,11 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.val_before_train=False \
     trainer.test_freq=10 \
     trainer.save_freq=10 \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
-    +trainer.max_actor_ckpt_to_keep=30 \
-    +trainer.max_critic_ckpt_to_keep=30 \
+    +trainer.max_actor_ckpt_to_keep=60 \
+    +trainer.max_critic_ckpt_to_keep=60 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
     +trainer.rejection_sample=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 

@@ -10,8 +10,8 @@
 #SBATCH --account=dawn_song
 #SBATCH --mail-type=all
 #SBATCH --mail-user=jinxiaolong1129@gmail.com
-#SBATCH --output=./output/ArcherCodeR/Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl/slurm_out_%j.txt
-#SBATCH --error=./output/ArcherCodeR/Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl/slurm_error_%j.txt
+#SBATCH --output=./output/ArcherCodeR/Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-debug-v2/slurm_out_%j.txt
+#SBATCH --error=./output/ArcherCodeR/Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-debug-v2/slurm_error_%j.txt
 #SBATCH --job-name=pure-grpo-qwen2.5-1.5b-2k-8k-16resp-no-kl
 
 # 导入环境变量
@@ -52,6 +52,6 @@ echo "💾 Memory allocated: $SLURM_MEM_PER_NODE MB"
 echo "🎮 GPUs allocated: $SLURM_GPUS"
 
 # Run the training script with explicit Ray CPU configuration
-bash scripts-iclr-server/train/run_Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl.sh ray_init.num_cpus=160
+bash scripts-iclr-server/train/run_Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl.sh
 
 echo "✅ Pure GRPO Training Job completed at: $(date)"

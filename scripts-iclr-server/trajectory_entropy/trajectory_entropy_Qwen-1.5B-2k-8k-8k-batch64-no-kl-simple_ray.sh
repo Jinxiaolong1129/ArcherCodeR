@@ -132,12 +132,13 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.save_freq=10 \
+    trainer.save_freq=20 \
     trainer.test_freq=10 \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
-    +trainer.validation_data_dir=${CKPTS_DIR}/eval \
+    trainer.resume_mode=auto \
     +trainer.max_actor_ckpt_to_keep=20 \
-    +trainer.max_critic_ckpt_to_keep=20 \
+    +trainer.max_critic_ckpt_to_keep=1 \
+    +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_trajectory_entropy.log
 

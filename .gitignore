@@ -207,3 +207,24 @@ outputs/
 checkpoints/
 ray_temp/
 wandb/
+wenbo/
+ssh/
+
+# 临时/残留文件
+=*
+*.zip
+
+# 日志和备份
+logs/
+back/
+
+# 评估结果
+Archer_eval/
+
+# 重复/实验目录
+Intuitor/Intuitor/
+archer2.0/
+
+# 测试文件
+test_wandb.sh
+test.json

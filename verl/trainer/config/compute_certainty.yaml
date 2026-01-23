@@ -1,0 +1,63 @@
+trainer:
+  nnodes: 1
+  n_gpus_per_node: 8
+  device: cuda
+
+data:
+  input_path: null  # Path to existing parquet with responses
+  output_path: null  # Path to save results with certainty metrics
+  prompt_key: prompt
+  response_key: responses
+  data_source_key: data_source
+  reward_model_key: reward_model
+  batch_size: 64  # Smaller batch size for memory efficiency
+  trust_remote_code: false
+
+model:
+  path: null  # Model checkpoint path
+  external_lib: null
+  use_remove_padding: false
+  use_fused_kernels: false
+  enable_gradient_checkpointing: false
+  trust_remote_code: false
+  use_liger: false
+
+rollout:
+  # These are needed for log_prob computation config
+  prompt_length: 2048
+  response_length: 8192
+  temperature: 1.0  # Used in log_prob calculation
+  log_prob_micro_batch_size: null
+  log_prob_micro_batch_size_per_gpu: 4
+  log_prob_max_token_len_per_gpu: null
+  log_prob_use_dynamic_bsz: false
+  n: 1
+
+actor:
+  strategy: fsdp
+  ulysses_sequence_parallel_size: 1
+  entropy_from_logits_with_chunking: false
+  entropy_checkpointing: false
+  ppo_mini_batch_size: 64
+  ppo_micro_batch_size: null
+  ppo_micro_batch_size_per_gpu: 4
+  fsdp_config:
+    fsdp_size: -1
+    forward_prefetch: false
+    model_dtype: bf16
+    param_offload: false
+    optimizer_offload: false
+  optim:
+    lr: 1e-6
+    lr_warmup_steps: -1
+    min_lr_ratio: null
+    warmup_style: constant
+    total_training_steps: -1
+    lr_decay_style: constant
+  checkpoint:
+    save_contents: ['model', 'optimizer', 'extra']
+
+ray_init:
+  num_cpus: null
+
+

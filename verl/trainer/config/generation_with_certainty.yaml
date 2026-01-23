@@ -1,0 +1,73 @@
+trainer:
+  nnodes: 1
+  n_gpus_per_node: 8
+  device: cuda
+
+data:
+  path: ~/data/rlhf/math/test.parquet
+  prompt_key: prompt
+  response_key: responses
+  data_source_key: data_source
+  reward_model_key: reward_model
+  n_samples: 1
+  output_path: /opt/tiger/math_Qwen2-7B-Instruct.parquet
+  batch_size: 256  # Smaller batch size since we need more memory for FSDP
+  trust_remote_code: false
+  reward_workers: 64  # Number of workers for parallel reward computation
+
+model:
+  path: ~/models/Qwen2-7B-Instruct
+  external_lib: null
+  use_shm: false
+
+# Analysis configuration
+analysis:
+  # Which training method was used? This determines which certainty metric to use for classification
+  # Options: INTUITOR, TRAJECTORY_ENTROPY, TOKEN_ENTROPY, PROB_DISPARITY
+  training_method: INTUITOR
+
+rollout:
+  name: vllm
+  mode: sync
+  temperature: 0.0  # Use greedy decoding for evaluation
+  top_k: -1  # -1 for vllm rollout
+  top_p: 1.0
+  prompt_length: 2048
+  response_length: 8192
+  # vllm settings
+  dtype: bfloat16
+  gpu_memory_utilization: 0.4  # Lower than usual since we also need memory for FSDP
+  ignore_eos: False
+  enforce_eager: True
+  free_cache_engine: True
+  load_format: dummy_dtensor
+  tensor_model_parallel_size: 1
+  max_num_batched_tokens: 8192
+  max_model_len: null
+  max_num_seqs: 256
+  log_prob_micro_batch_size: null
+  log_prob_micro_batch_size_per_gpu: 4  # For compute_log_prob
+  log_prob_max_token_len_per_gpu: 16384
+  log_prob_use_dynamic_bsz: false
+  # Other settings
+  do_sample: False  # Greedy for eval
+  disable_log_stats: True
+  enable_chunked_prefill: True
+  n: 1
+
+actor:
+  strategy: fsdp
+  ulysses_sequence_parallel_size: 1
+  entropy_from_logits_with_chunking: False
+  entropy_checkpointing: False
+  fsdp_config:
+    fsdp_size: -1
+    forward_prefetch: False
+    model_dtype: bfloat16
+    param_offload: false  # Set to true if you run out of GPU memory
+    optimizer_offload: false
+
+ray_init:
+  num_cpus: 64
+  timeline_json_file: null
+

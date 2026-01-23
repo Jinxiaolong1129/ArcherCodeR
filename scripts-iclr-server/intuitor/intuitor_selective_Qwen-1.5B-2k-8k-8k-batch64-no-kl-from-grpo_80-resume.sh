@@ -139,7 +139,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.experiment_name="${exp_name}" \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \

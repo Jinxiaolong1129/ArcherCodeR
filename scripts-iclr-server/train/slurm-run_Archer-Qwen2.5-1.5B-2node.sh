@@ -288,7 +288,7 @@ PYTHONUNBUFFERED=1 srun --overlap --nodes=1 --ntasks=1 -w "$head_node" \
     trainer.val_before_train=False \
     trainer.test_freq=10 \
     trainer.save_freq=10 \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     +trainer.max_actor_ckpt_to_keep=2 \

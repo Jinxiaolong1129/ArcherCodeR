@@ -1,83 +1,80 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -xeuo pipefail
 
-set -e
-set -x
 
 # 导入环境变量
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
-    echo "Loaded environment variables from .env"
-    echo "Your WANDB_API_KEY is: $WANDB_API_KEY"
-    echo "Your HF_TOKEN is: $HF_TOKEN"
+    echo -e "✅ Loaded environment variables from .env$"
+    echo -e "🔑 WANDB_API_KEY: ${WANDB_API_KEY:0:8}...$"
+    echo -e "🔑 HF_TOKEN: ${HF_TOKEN:0:8}...$"
 else
-    echo "Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
+    echo -e "⚠️  Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
 fi
 
-export ACCELERATE_LOG_LEVEL=info
-export HYDRA_FULL_ERROR=1
 
-
-
-# Configuration variables (similar to Archer script)
-project_name='ArcherCodeR'
-exp_name='Archer-Intuitor-Qwen2.5-1.5B-2k-8k-8k-batch64-kl005'
 nnodes=1
 
+project_name='ArcherCodeR'
+exp_name='Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-kl005'
+
+adv_estimator=trajectory_entropy
+
+# kl config - KL LOSS ENABLED
+use_kl_in_reward=False
+kl_coef=0.005
+use_kl_loss=True
+
+# Sequence lengths
 max_prompt_length=$((1024 * 2))  # 2K
-max_response_length=$((1024 * 8))   
-v_max_response_length=$((1024 * 8))  
+max_response_length=$((1024 * 8))  # 8K
+v_max_response_length=$((1024 * 8))  # 8K
 
-
-# Batch sizes (adjusted for Intuitor)
-# train_prompt_bsz=32  
-# gen_prompt_bsz=$((train_prompt_bsz * 1))
-# train_prompt_mini_bsz=16 
+# Batch sizes
 train_prompt_bsz=64
 gen_prompt_bsz=$((train_prompt_bsz * 1))
 train_prompt_mini_bsz=32
 
-# Model and data paths
+# Paths
 MODEL_PATH=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
-# Add checkpoint and evaluation directories
 CKPTS_DIR=./output/${project_name}/${exp_name}
 data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
 TEST_FILE=$data_dir/test/livecodebench_v5.json
 
-# Response generation (matching Archer validation settings)
-n_resp_per_prompt=16  # 改为16，与archer脚本一致
-temperature=1.0  # 改为1.0，与archer脚本一致
+# Response generation
+n_resp_per_prompt=16
+temperature=1.0
 top_p=1.0
-top_k=-1
-v_n=4  # 改为4，与archer脚本一致
-v_temperature=0.8  # 保持0.8
+top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
+v_n=4
+v_temperature=0.8
 v_top_p=1.0
 v_top_k=-1
-v_do_sample=true  # 明确设置为true
 
 # Performance settings
-gen_tp=2  # 改为2，与archer脚本一致
-micro_batch_size_per_gpu=1  # 改为1，与archer脚本一致
+gen_tp=2
+micro_batch_size_per_gpu=1
 actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 infer_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 offload=False
 
-echo "🚀 INTUITOR CONFIGURATION:"
+echo "🚀 TRAJECTORY-LEVEL ENTROPY CONFIGURATION (KL LOSS 0.005):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
 echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
-echo "🎯 Algorithm: Intuitor (self-certainty + livecodebench validation)"
-echo "🎲 Validation sampling: n=${v_n}, do_sample=${v_do_sample}, temperature=${v_temperature}"
+echo "⚡ Tensor parallel: ${gen_tp}"
+echo "🎯 Algorithm: Trajectory-Level Entropy (average log probability)"
+echo "🎲 Validation sampling: n=${v_n}, do_sample=true, temperature=${v_temperature}"
+echo "✅ KL Loss: ENABLED (coef=${kl_coef})"
 
-# Create output and evaluation directories
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-# 使用标准PPO训练，Intuitor训练时用self-certainty，验证时用livecodebench reward
-PYTHONUNBUFFERED=1 /home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
-    algorithm.adv_estimator=intuitor \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
+    algorithm.adv_estimator=${adv_estimator} \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -100,8 +97,8 @@ PYTHONUNBUFFERED=1 /home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trai
     actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=${micro_batch_size_per_gpu} \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${actor_ppo_max_token_len} \
-    actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.005 \
+    actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
+    actor_rollout_ref.actor.kl_loss_coef=${kl_coef} \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.actor.grad_clip=1.0 \
@@ -120,7 +117,7 @@ PYTHONUNBUFFERED=1 /home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trai
     actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + v_max_response_length)) \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.val_kwargs.n=${v_n} \
-    actor_rollout_ref.rollout.val_kwargs.do_sample=${v_do_sample} \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=true \
     actor_rollout_ref.rollout.val_kwargs.temperature=${v_temperature} \
     actor_rollout_ref.rollout.val_kwargs.top_p=${v_top_p} \
     actor_rollout_ref.rollout.val_kwargs.top_k=${v_top_k} \
@@ -128,20 +125,24 @@ PYTHONUNBUFFERED=1 /home/ec2-user/miniconda3/envs/archer/bin/python -m verl.trai
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    algorithm.use_kl_in_reward=False \
+    algorithm.use_kl_in_reward=${use_kl_in_reward} \
     reward_model.reward_manager=wizard \
     trainer.critic_warmup=0 \
     trainer.val_before_train=False \
     trainer.n_gpus_per_node=8 \
-    trainer.nnodes=${nnodes} \
+    trainer.nnodes="${nnodes}" \
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
     trainer.save_freq=10 \
+    +trainer.save_first_step=10 \
+    +trainer.save_interval_after_first=40 \
     trainer.test_freq=10 \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
-    +trainer.max_actor_ckpt_to_keep=2 \
-    +trainer.max_critic_ckpt_to_keep=2 \
-    trainer.balance_batch=False 2>&1 | tee ${CKPTS_DIR}/verl_${exp_name}_intuitor.log 
+    +trainer.max_actor_ckpt_to_keep=8 \
+    +trainer.max_critic_ckpt_to_keep=1 \
+    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_trajectory_entropy.log
+
+

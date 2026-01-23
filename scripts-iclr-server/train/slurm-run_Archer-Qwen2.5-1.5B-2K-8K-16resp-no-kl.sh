@@ -34,6 +34,19 @@ unset ROCR_VISIBLE_DEVICES
 unset HIP_VISIBLE_DEVICES
 unset AMD_VISIBLE_DEVICES
 
+# ============================================
+# Fix for /tmp disk space issue (Ray sessions)
+# ============================================
+# Set Ray to use a directory with more space
+export RAY_TMPDIR=/data/xuandong_zhao/tmp/ray
+export TMPDIR=/data/xuandong_zhao/tmp
+mkdir -p $RAY_TMPDIR
+
+# Clean up old Ray sessions to prevent disk space exhaustion
+echo "Cleaning up old Ray sessions..."
+rm -rf /tmp/ray/session_* 2>/dev/null || true
+rm -rf $RAY_TMPDIR/session_* 2>/dev/null || true
+
 # Navigate to project directory
 cd /data/xuandong_zhao/mnt/xiaolong/ArcherCodeR
 

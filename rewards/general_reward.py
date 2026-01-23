@@ -73,26 +73,50 @@ def lcb_check_correctness(sample, generation, timeout=150, debug=False):
         target=_temp_run,
         args=(sample, generation, debug, result, metadata_list, timeout),
     )
-    p.start()
-    p.join(
-        timeout=(timeout + 1) * len(json.loads(sample["input_output"])["inputs"]) + 5
-    )
-    if p.is_alive():
-        # Force terminate the process if it's still running (likely infinite recursion)
-        p.terminate()
-        p.join(timeout=5)  # Give it 5 seconds to terminate gracefully
+    
+    try:
+        p.start()
+        p.join(
+            timeout=(timeout + 1) * len(json.loads(sample["input_output"])["inputs"]) + 5
+        )
         if p.is_alive():
-            p.kill()  # Force kill if it still won't terminate
-    if not result:
+            # Force terminate the process if it's still running (likely infinite recursion)
+            p.terminate()
+            p.join(timeout=2)  # Give it 2 seconds to terminate gracefully
+            if p.is_alive():
+                p.kill()  # Force kill if it still won't terminate
+                p.join(timeout=1)  # Wait for kill to complete
+        
+        # Copy result before cleanup (manager will be shutdown)
+        final_result = list(result) if result else None
+        
+    finally:
+        # CRITICAL: Clean up the process
+        if p.is_alive():
+            p.kill()
+            p.join(timeout=1)
+        try:
+            p.close()  # Release process resources
+        except Exception:
+            pass
+        
+        # CRITICAL: Shutdown the manager to prevent memory leak!
+        # This is the main fix - Manager() creates a server process that was never cleaned up
+        try:
+            manager.shutdown()
+        except Exception:
+            pass
+    
+    if not final_result:
         in_outs = json.loads(sample["input_output"])
         # consider that all tests failed
-        result = [[-1 for i in range(len(in_outs["inputs"]))]]
+        final_result = [[-1 for i in range(len(in_outs["inputs"]))]]
         if debug:
             print(f"global timeout")
-    if not result:
+    if not final_result:
         return False
 
-    return all(x == True for x in result[0])
+    return all(x == True for x in final_result[0])
 
 
 class RewardCodeFn(RewardFn):
@@ -127,7 +151,7 @@ class RewardCodeFn(RewardFn):
         if ground_truths is None:
             return RewardOutput(reward=self.config.unk_error_reward, is_correct=False)
 
-        if data_source in ['livecodebench', 'livecodebench_v5']:
+        if data_source in ['livecodebench', 'livecodebench_v5', 'livecodebench_v6']:
             is_correct = lcb_check_correctness(ground_truths, model_answer)
         else:
             is_correct, extro_info = grade_answer_code(model_answer, ground_truths, data_source, is_eval=is_eval)

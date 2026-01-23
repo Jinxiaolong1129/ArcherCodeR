@@ -1834,7 +1834,22 @@ class RayPPOTrainer:
                         logger.info(f"   ✅ Validation completed in {val_time:.2f}s")
 
                     # 检查点保存
-                    if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
+                    # Custom save logic: save at save_first_step, then every save_interval_after_first steps
+                    save_first_step = self.config.trainer.get("save_first_step", None)
+                    save_interval = self.config.trainer.get("save_interval_after_first", None)
+                    
+                    if save_first_step is not None and save_interval is not None:
+                        # Custom saving: step 10, then every 40 steps (50, 90, 130, ...)
+                        should_save = (
+                            is_last_step or 
+                            self.global_steps == save_first_step or 
+                            (self.global_steps > save_first_step and (self.global_steps - save_first_step) % save_interval == 0)
+                        )
+                    else:
+                        # Default behavior: save every save_freq steps
+                        should_save = self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0)
+                    
+                    if should_save:
                         save_start_time = time.time()
                         logger.info(f"   💾 Saving checkpoint at step {self.global_steps}...")
                         with _timer("save_checkpoint", timing_raw):

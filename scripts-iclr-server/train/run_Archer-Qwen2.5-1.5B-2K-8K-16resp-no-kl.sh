@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
+# # 清理 ROCR_VISIBLE_DEVICES，避免与 CUDA_VISIBLE_DEVICES 冲突
+# # ROCR 是 AMD ROCm 用的，在 NVIDIA 环境下需要 unset
+# unset ROCR_VISIBLE_DEVICES 2>/dev/null || true
+
 # 导入环境变量
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
@@ -14,7 +18,7 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl'
+exp_name='Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl-debug-11-44'
 
 adv_estimator=grpo
 
@@ -98,7 +102,7 @@ echo "❌ KL Loss: DISABLED"
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-/home/ec2-user/miniconda3/envs/archer/bin/python -m dapo.main_dapo \
+/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -177,11 +181,11 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.val_before_train=False \
     trainer.test_freq=10 \
     trainer.save_freq=10 \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
-    +trainer.max_actor_ckpt_to_keep=30 \
-    +trainer.max_critic_ckpt_to_keep=30 \
+    +trainer.max_actor_ckpt_to_keep=1 \
+    +trainer.max_critic_ckpt_to_keep=1 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
     +trainer.rejection_sample=True $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 
