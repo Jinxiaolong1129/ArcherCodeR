@@ -14,17 +14,13 @@ REMOTE_HOST="trojai4.cs.purdue.edu"
 REMOTE_BASE="/data4/user/jin509/ArcherCodeR/output/ArcherCodeR"
 LOCAL_BASE="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/ArcherCodeR"
 
-# 要同步的实验目录 (ProbDisparity + Intuitor 系列)
+# 要同步的实验目录 (Pure-GRPO 系列)
 DIRS=(
-    # ProbDisparity 系列
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple"
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n12"
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp0.8"
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp1.2"
-    # Intuitor 系列
-    "Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-kl005"
-    "Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp0.8"
-    "Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-probdisparity-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajentropy-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor-step10"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-tokenentropy-step50-batch64"
 )
 
 # SSH 跳板机代理命令
@@ -57,7 +53,7 @@ echo ""
 chmod 600 "${SSH_KEY}" 2>/dev/null
 
 # 显示所有目录的大小
-echo "📦 待同步目录 (ProbDisparity + Intuitor 系列):"
+echo "📦 待同步目录 (Pure-GRPO 系列):"
 for dir in "${DIRS[@]}"; do
     if [ -d "${LOCAL_BASE}/${dir}" ]; then
         SIZE=$(du -sh "${LOCAL_BASE}/${dir}" 2>/dev/null | cut -f1)

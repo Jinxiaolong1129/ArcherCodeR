@@ -267,6 +267,55 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
             if "dace_certainty" in batch.non_tensor_batch
             else {}
         ),
+        # ============== UNIVERSAL INTERNAL METRICS (always logged for comparison) ==============
+        # These metrics are computed regardless of which advantage estimator is used,
+        # allowing cross-method comparison in experiments.
+        
+        # 1. Self-Certainty (Intuitor signal) - always available
+        **(
+            {
+                "internal_metrics/self_certainty/mean": torch.mean(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+                "internal_metrics/self_certainty/max": torch.max(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+                "internal_metrics/self_certainty/min": torch.min(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+                "internal_metrics/self_certainty/std": torch.std(torch.masked_select(batch.batch["self_certaintys"], response_mask)).detach().item(),
+            }
+            if "self_certaintys" in batch.batch
+            else {}
+        ),
+        # 2. Token Entropy (negative = more confident) - always available
+        **(
+            {
+                "internal_metrics/token_entropy/mean": torch.mean(torch.masked_select(batch.batch["entropys"], response_mask)).detach().item(),
+                "internal_metrics/token_entropy/max": torch.max(torch.masked_select(batch.batch["entropys"], response_mask)).detach().item(),
+                "internal_metrics/token_entropy/min": torch.min(torch.masked_select(batch.batch["entropys"], response_mask)).detach().item(),
+                "internal_metrics/token_entropy/std": torch.std(torch.masked_select(batch.batch["entropys"], response_mask)).detach().item(),
+            }
+            if "entropys" in batch.batch
+            else {}
+        ),
+        # 3. Trajectory Entropy = -mean(log_prob), higher = more confident
+        # Consistent with compute_certainty.py: trajectory_entropy = -all_log_probs
+        **(
+            {
+                "internal_metrics/trajectory_entropy/mean": -torch.mean(torch.masked_select(batch.batch["old_log_probs"], response_mask)).detach().item(),
+                "internal_metrics/trajectory_entropy/max": -torch.min(torch.masked_select(batch.batch["old_log_probs"], response_mask)).detach().item(),  # max(-x) = -min(x)
+                "internal_metrics/trajectory_entropy/min": -torch.max(torch.masked_select(batch.batch["old_log_probs"], response_mask)).detach().item(),  # min(-x) = -max(x)
+                "internal_metrics/trajectory_entropy/std": torch.std(torch.masked_select(batch.batch["old_log_probs"], response_mask)).detach().item(),   # std is sign-invariant
+            }
+            if "old_log_probs" in batch.batch
+            else {}
+        ),
+        # 4. Prob Disparity (top1 - top2 prob, higher = more confident) - always available
+        **(
+            {
+                "internal_metrics/prob_disparity/mean": torch.mean(torch.masked_select(batch.batch["prob_disparitys"], response_mask)).detach().item(),
+                "internal_metrics/prob_disparity/max": torch.max(torch.masked_select(batch.batch["prob_disparitys"], response_mask)).detach().item(),
+                "internal_metrics/prob_disparity/min": torch.min(torch.masked_select(batch.batch["prob_disparitys"], response_mask)).detach().item(),
+                "internal_metrics/prob_disparity/std": torch.std(torch.masked_select(batch.batch["prob_disparitys"], response_mask)).detach().item(),
+            }
+            if "prob_disparitys" in batch.batch
+            else {}
+        ),
         # response length
         "response_length/mean": torch.mean(response_length).detach().item(),
         "response_length/max": torch.max(response_length).detach().item(),

@@ -10,10 +10,9 @@
 #SBATCH --account=dawn_song
 #SBATCH --mail-type=all
 #SBATCH --mail-user=jinxiaolong1129@gmail.com
-#SBATCH --output=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp1.2-rep/slurm_out_%j.txt
-#SBATCH --error=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp1.2-rep/slurm_error_%j.txt
-#SBATCH --job-name=intuitor-qwen2.5-1.5b-no-kl-temp1.2
-
+#SBATCH --output=./output/ArcherCodeR/Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajentropy-step100/slurm_out_%j.txt
+#SBATCH --error=./output/ArcherCodeR/Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajentropy-step100/slurm_error_%j.txt
+#SBATCH --job-name=grpo-from-trajentropy-step100
 
 
 # 导入环境变量
@@ -39,25 +38,18 @@ unset AMD_VISIBLE_DEVICES
 
 cd /data/xuandong_zhao/mnt/xiaolong/ArcherCodeR
 
+# 创建输出目录
+mkdir -p ./output/ArcherCodeR/Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajentropy-step100
+
+# hf_model 已经存在，无需合并
+echo "✅ Using existing hf_model from TrajectoryEntropy checkpoint"
+
+# ============================================
+# Start training
+# ============================================
 ray stop --force 2>/dev/null || true
 
-bash scripts-iclr-server/intuitor/intuitor_Qwen-1.5B-2k-8k-8k-batch64-no-kl-temp1.2.sh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+bash scripts-iclr-server/train/run_Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajentropy-step100.sh
 
 
 

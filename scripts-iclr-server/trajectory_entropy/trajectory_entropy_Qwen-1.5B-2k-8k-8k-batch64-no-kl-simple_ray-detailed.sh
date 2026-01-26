@@ -16,9 +16,9 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-rollout8-rep'
+exp_name='Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-detailed-v2'
 
-adv_estimator=intuitor
+adv_estimator=trajectory_entropy
 
 # kl config - NO KL LOSS
 use_kl_in_reward=False
@@ -42,8 +42,8 @@ data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
 TEST_FILE=$data_dir/test/livecodebench_v5.json
 
-# Response generation - ROLLOUT 8
-n_resp_per_prompt=8
+# Response generation
+n_resp_per_prompt=16
 temperature=1.0
 top_p=1.0
 top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
@@ -59,17 +59,17 @@ actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 infer_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 offload=False
 
-echo "🚀 INTUITOR CONFIGURATION (NO KL LOSS - ROLLOUT 8):"
+echo "🚀 TRAJECTORY-LEVEL ENTROPY CONFIGURATION (NO KL LOSS - SIMPLE RAY - DETAILED):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
 echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
 echo "⚡ Tensor parallel: ${gen_tp}"
-echo "🎯 Algorithm: Intuitor (self-certainty + livecodebench validation)"
-echo "🌡️ Training temperature: ${temperature}"
+echo "🎯 Algorithm: Trajectory-Level Entropy (average log probability)"
 echo "🎲 Validation sampling: n=${v_n}, do_sample=true, temperature=${v_temperature}"
 echo "❌ KL Loss: DISABLED"
+echo "📊 Detailed metrics: ENABLED"
 
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
@@ -134,14 +134,13 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
     trainer.save_freq=10 \
-    +trainer.save_first_step=10 \
-    +trainer.save_interval_after_first=40 \
     trainer.test_freq=10 \
     trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
-    +trainer.max_actor_ckpt_to_keep=8 \
+    +trainer.max_actor_ckpt_to_keep=30 \
     +trainer.max_critic_ckpt_to_keep=1 \
-    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_intuitor.log
+    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_trajectory_entropy.log
+
 

@@ -6,13 +6,13 @@
 SSH_KEY="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/ssh/mithril_jxl"
 REMOTE_USER="ubuntu"
 REMOTE_HOST="18.236.82.4"
-REMOTE_BASE="/mnt/selfrl/ArcherCodeR/output/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-v2"
-LOCAL_BASE="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-v2"
+REMOTE_BASE="/mnt/selfrl/ArcherCodeR/output"
+LOCAL_BASE="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/ArcherCodeR"
 
-# 要同步的目录列表
+# 要同步的目录列表 (相对于LOCAL_BASE)
 DIRS=(
-    "global_step_105"
-    "global_step_80"
+    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/global_step_105"
+    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/global_step_105"
 )
 
 # 高速 SSH 选项
@@ -75,10 +75,14 @@ for dir in "${DIRS[@]}"; do
     
     DIR_START=$(date +%s)
     
+    # 获取父目录路径并在远程创建
+    PARENT_DIR=$(dirname "${dir}")
+    ssh ${SSH_OPTS} "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p ${REMOTE_BASE}/${PARENT_DIR}"
+    
     # 执行同步 (rsync 会自动在目标创建目录)
     rsync ${RSYNC_OPTS} -e "ssh ${SSH_OPTS}" \
         "${SOURCE_DIR}" \
-        "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_BASE}/"
+        "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_BASE}/${PARENT_DIR}/"
     
     if [ $? -eq 0 ]; then
         DIR_END=$(date +%s)

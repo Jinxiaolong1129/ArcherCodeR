@@ -15,10 +15,13 @@ REMOTE_HOST="purcl.cs.purdue.edu"
 REMOTE_BASE="/scratch/jin509/ArcherCodeR/output/ArcherCodeR"
 LOCAL_BASE="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/ArcherCodeR"
 
-# 要同步的目录列表
+# 要同步的目录列表 (相对于 LOCAL_BASE 的路径)
 DIRS=(
-    "Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8"
-    "Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n12"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-probdisparity-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajentropy-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor-step10"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-tokenentropy-step50-batch64"
 )
 
 # SSH 跳板机代理命令
@@ -115,11 +118,20 @@ for dir in "${DIRS[@]}"; do
     
     DIR_START=$(date +%s)
     
+    # 获取父目录路径 (用于保持远程目录结构)
+    PARENT_DIR=$(dirname "${dir}")
+    REMOTE_DEST="${REMOTE_BASE}/${PARENT_DIR}"
+    
+    # 确保远程父目录存在
+    ssh -i "${TARGET_KEY}" -o StrictHostKeyChecking=no \
+        -o ProxyCommand="ssh -i ${PROXY_KEY} -o StrictHostKeyChecking=no -W %h:%p ${PROXY_USER}@${PROXY_HOST}" \
+        "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p ${REMOTE_DEST}"
+    
     # 执行同步 (通过跳板机)
     rsync ${RSYNC_OPTS} \
         -e "ssh -i ${TARGET_KEY} -o StrictHostKeyChecking=no -o ProxyCommand=\"ssh -i ${PROXY_KEY} -o StrictHostKeyChecking=no -W %h:%p ${PROXY_USER}@${PROXY_HOST}\"" \
         "${SOURCE_DIR}" \
-        "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_BASE}/"
+        "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DEST}/"
     
     if [ $? -eq 0 ]; then
         DIR_END=$(date +%s)

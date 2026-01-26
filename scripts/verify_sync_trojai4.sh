@@ -15,17 +15,13 @@ REMOTE_HOST="trojai4.cs.purdue.edu"
 REMOTE_BASE="/data4/user/jin509/ArcherCodeR/output/ArcherCodeR"
 LOCAL_BASE="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/ArcherCodeR"
 
-# 所有实验目录
+# 所有实验目录 (Pure-GRPO 系列)
 ALL_DIRS=(
-    # ProbDisparity 系列
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple"
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n12"
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp0.8"
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp1.2"
-    # Intuitor 系列
-    "Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-kl005"
-    "Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp0.8"
-    "Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-probdisparity-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajentropy-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor-step10"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor-step50"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-tokenentropy-step50-batch64"
 )
 
 # 验证单个目录的函数

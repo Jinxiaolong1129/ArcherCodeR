@@ -1670,9 +1670,8 @@ class RayPPOTrainer:
                         entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
                         old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
                         metrics.update(old_log_prob_metrics)
-                        # Only remove entropys if not needed by advantage estimator
-                        if self.config.algorithm.adv_estimator != AdvantageEstimator.TOKEN_ENTROPY:
-                            old_log_prob.batch.pop("entropys")
+                        # Keep entropys for internal_metrics logging (don't remove anymore)
+                        # Previously: if adv_estimator != TOKEN_ENTROPY: old_log_prob.batch.pop("entropys")
                         batch = batch.union(old_log_prob)
 
                         if "rollout_log_probs" in batch.batch.keys():

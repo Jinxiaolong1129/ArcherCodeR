@@ -10,8 +10,8 @@
 #SBATCH --account=dawn_song
 #SBATCH --mail-type=all
 #SBATCH --mail-user=jinxiaolong1129@gmail.com
-#SBATCH --output=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-rollout8/slurm_out_%j.txt
-#SBATCH --error=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-rollout8/slurm_error_%j.txt
+#SBATCH --output=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-rollout8-rep/slurm_out_%j.txt
+#SBATCH --error=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-rollout8-rep/slurm_error_%j.txt
 #SBATCH --job-name=intuitor-no-kl-rollout8
 
 

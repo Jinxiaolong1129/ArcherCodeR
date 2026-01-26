@@ -14,7 +14,7 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-intuitor-step50'
+exp_name='Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-from-trajectoryentropy-step160'
 
 adv_estimator=grpo
 
@@ -50,8 +50,9 @@ data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
 TEST_FILE=$data_dir/test/livecodebench_v5.json
 
-# Resume from Intuitor checkpoint
-INTUITOR_CHECKPOINT_PATH=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-v2/global_step_50
+# TrajectoryEntropy checkpoint step 160 - full checkpoint for resume
+TRAJECTORYENTROPY_CKPT_PATH=./output/ArcherCodeR/Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/global_step_160
+TRAJECTORYENTROPY_HF_MODEL_PATH=${TRAJECTORYENTROPY_CKPT_PATH}/actor/hf_model
 
 # Response generation
 n_resp_per_prompt=16
@@ -75,42 +76,24 @@ offload=False
 # Trainer
 use_overlong_filter=False
 
-echo "🚀 PURE GRPO CONFIGURATION (FROM INTUITOR CHECKPOINT):"
+echo "🚀 PURE GRPO CONFIGURATION (FROM TRAJECTORY ENTROPY CHECKPOINT STEP 160):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
 echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
 echo "⚡ Tensor parallel: ${gen_tp}"
-echo "🎯 Algorithm: Switching from Intuitor to Pure GRPO"
-echo "🔄 Resume from: ${INTUITOR_CHECKPOINT_PATH}"
+echo "🎯 Algorithm: Switching from TrajectoryEntropy to Pure GRPO"
+echo "🔄 Resume checkpoint: ${TRAJECTORYENTROPY_CKPT_PATH}"
+echo "🔄 Model path: ${TRAJECTORYENTROPY_HF_MODEL_PATH}"
 echo "🎯 Total tokens per batch: $((train_prompt_bsz * n_resp_per_prompt * v_max_response_length))"
 echo "❌ KL Loss: DISABLED"
-echo "❌ Token Entropy Separation: DISABLED"
+echo "❌ Trajectory Entropy Separation: DISABLED"
 echo "✅ Standard PPO Clipping: ${clip_ratio_low}/${clip_ratio_high}"
+echo "📊 Training: step 160 → 210 (50 steps)"
 
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
-
-# ============================================
-# 智能判断 resume 模式
-# ============================================
-# 查找 CKPTS_DIR 下最新的 global_step_* 目录
-LATEST_STEP=$(ls -d ${CKPTS_DIR}/global_step_* 2>/dev/null | sed 's/.*global_step_//' | sort -n | tail -1)
-
-if [ -n "${LATEST_STEP}" ]; then
-    echo "✅ 发现已有 checkpoint: global_step_${LATEST_STEP}"
-    echo "🔄 将从 ${CKPTS_DIR}/global_step_${LATEST_STEP} 继续训练"
-    RESUME_MODE="auto"
-    RESUME_PATH="${CKPTS_DIR}"
-    # 创建/更新 latest_checkpointed_iteration.txt
-    echo "${LATEST_STEP}" > "${CKPTS_DIR}/latest_checkpointed_iteration.txt"
-else
-    echo "⚠️  未发现已有 checkpoint"
-    echo "🔄 将从 Intuitor checkpoint ${INTUITOR_CHECKPOINT_PATH} 开始训练"
-    RESUME_MODE="resume_path"
-    RESUME_PATH="${INTUITOR_CHECKPOINT_PATH}"
-fi
 
 # 使用标准的 verl.trainer.main_ppo 入口点进行纯GRPO训练
 /data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
@@ -136,7 +119,7 @@ fi
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
-    actor_rollout_ref.model.path="${INTUITOR_CHECKPOINT_PATH}/actor/hf_model" \
+    actor_rollout_ref.model.path="${TRAJECTORYENTROPY_HF_MODEL_PATH}" \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
@@ -192,14 +175,16 @@ fi
     trainer.val_before_train=False \
     trainer.test_freq=10 \
     trainer.save_freq=10 \
-    trainer.total_epochs=1 \
-    trainer.total_training_steps=100 \
+    trainer.total_epochs=3 \
+    trainer.total_training_steps=210 \
     trainer.default_local_dir="${CKPTS_DIR}" \
-    trainer.resume_mode=${RESUME_MODE} \
-    trainer.resume_from_path="${RESUME_PATH}" \
+    trainer.resume_from_path="${TRAJECTORYENTROPY_CKPT_PATH}" \
+    trainer.resume_mode=resume_path \
     +trainer.max_actor_ckpt_to_keep=60 \
     +trainer.max_critic_ckpt_to_keep=60 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \
     +trainer.rejection_sample=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_grpo.log 
+
+
 

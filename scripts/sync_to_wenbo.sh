@@ -11,14 +11,10 @@ LOCAL_BASE="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/ArcherCodeR"
 
 # 要同步的目录列表
 DIRS=(
-    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n12"
-    "Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp1.2"
-    "Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-kl005"
-    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp0.8"
-    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp1.2"
-    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-temp1.2-v2"
-    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8"
     "Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-temp0.8"
+    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8"
+    "Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl-temp1.2-v2"
+    "Archer-Qwen2.5-1.5B-2K-8K-16resp-no-kl"
 )
 
 # 高速 SSH 选项

@@ -5,13 +5,13 @@
 #SBATCH --cpus-per-task=180
 #SBATCH --mem=512GB
 #SBATCH --gpus=8
-#SBATCH --time=24:00:00
+#SBATCH --time=3:00:00
 #SBATCH --partition=schmidt_sciences
 #SBATCH --account=dawn_song
 #SBATCH --mail-type=all
 #SBATCH --mail-user=jinxiaolong1129@gmail.com
-#SBATCH --output=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8/slurm_out_%j.txt
-#SBATCH --error=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8/slurm_error_%j.txt
+#SBATCH --output=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8-rep/slurm_out_%j.txt
+#SBATCH --error=./output/ArcherCodeR/Archer-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-n8-rep/slurm_error_%j.txt
 #SBATCH --job-name=intuitor-no-kl-n8
 
 
