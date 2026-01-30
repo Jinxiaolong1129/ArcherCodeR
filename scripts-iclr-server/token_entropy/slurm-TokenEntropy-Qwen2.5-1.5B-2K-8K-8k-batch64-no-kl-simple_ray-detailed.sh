@@ -10,9 +10,9 @@
 #SBATCH --account=dawn_song
 #SBATCH --mail-type=all
 #SBATCH --mail-user=jinxiaolong1129@gmail.com
-#SBATCH --output=./output/ArcherCodeR/Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-detailed-v2/slurm_out_%j.txt
-#SBATCH --error=./output/ArcherCodeR/Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-detailed-v2/slurm_error_%j.txt
-#SBATCH --job-name=token-entropy-detailed-v2
+#SBATCH --output=./output/ArcherCodeR/Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-epoch-10-lr/slurm_out_%j.txt
+#SBATCH --error=./output/ArcherCodeR/Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-epoch-10-lr/slurm_error_%j.txt
+#SBATCH --job-name=token-entropy-epoch-10-lr
 
 # 导入环境变量
 if [ -f .env ]; then
@@ -40,7 +40,7 @@ unset AMD_VISIBLE_DEVICES
 cd /data/xuandong_zhao/mnt/xiaolong/ArcherCodeR
 
 # Make sure output directory exists for SLURM logs
-mkdir -p ./output/ArcherCodeR/Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-detailed-v2
+mkdir -p ./output/ArcherCodeR/Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-epoch-10-lr
 
 # Stop any existing Ray processes and clean up
 ray stop --force 2>/dev/null || true

@@ -16,7 +16,7 @@ fi
 nnodes=1
 
 project_name='ArcherCodeR'
-exp_name='Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-detailed-v2'
+exp_name='Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-epoch-10-lr'
 
 adv_estimator=prob_disparity
 
@@ -106,7 +106,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.75 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.rollout.n=${n_resp_per_prompt} \
     actor_rollout_ref.rollout.temperature=${temperature} \
@@ -135,7 +135,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.experiment_name="${exp_name}" \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.total_epochs=1 \
+    trainer.total_epochs=10 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \

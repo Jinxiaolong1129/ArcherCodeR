@@ -5,21 +5,25 @@
 # 配置
 SSH_KEY="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/ssh/mithril_jxl"
 REMOTE_USER="ubuntu"
-REMOTE_HOST="18.236.82.4"
+REMOTE_HOST="35.95.65.28"
 REMOTE_BASE="/mnt/selfrl/ArcherCodeR/output"
 LOCAL_BASE="/data/xuandong_zhao/mnt/xiaolong/ArcherCodeR/output/ArcherCodeR"
 
 # 要同步的目录列表 (相对于LOCAL_BASE)
 DIRS=(
-    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/global_step_105"
-    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple/global_step_105"
+    "Archer-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-epoch-10-lr/global_step_50"
+    "Archer-TrajectoryEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-epoch-10-lr/global_step_40"
+    "Archer-TokenEntropy-Qwen2.5-1.5B-2k-8k-batch64-no-kl-simple-epoch-10-lr/global_step_100"
 )
 
-# 高速 SSH 选项
-SSH_OPTS="-i ${SSH_KEY} -o StrictHostKeyChecking=no -o Compression=no -c aes128-gcm@openssh.com"
+# SSH 选项 - 添加保活设置防止连接断开
+SSH_OPTS="-i ${SSH_KEY} -o StrictHostKeyChecking=no -o Compression=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes -c aes128-gcm@openssh.com"
 
-# rsync 高速选项
-RSYNC_OPTS="-avzP --inplace"
+# rsync 选项 - 添加超时和部分传输支持
+RSYNC_OPTS="-avzP --inplace --partial --timeout=120"
+
+# 重试次数
+MAX_RETRIES=3
 
 echo "=========================================="
 echo "🚀 批量同步开始"
@@ -79,18 +83,34 @@ for dir in "${DIRS[@]}"; do
     PARENT_DIR=$(dirname "${dir}")
     ssh ${SSH_OPTS} "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p ${REMOTE_BASE}/${PARENT_DIR}"
     
-    # 执行同步 (rsync 会自动在目标创建目录)
-    rsync ${RSYNC_OPTS} -e "ssh ${SSH_OPTS}" \
-        "${SOURCE_DIR}" \
-        "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_BASE}/${PARENT_DIR}/"
+    # 执行同步 - 带重试机制
+    RETRY_COUNT=0
+    SYNC_SUCCESS=false
     
-    if [ $? -eq 0 ]; then
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SYNC_SUCCESS" = false ]; do
+        ((RETRY_COUNT++))
+        
+        if [ $RETRY_COUNT -gt 1 ]; then
+            echo "🔄 重试第 ${RETRY_COUNT}/${MAX_RETRIES} 次..."
+            sleep 5  # 重试前等待5秒
+        fi
+        
+        rsync ${RSYNC_OPTS} -e "ssh ${SSH_OPTS}" \
+            "${SOURCE_DIR}" \
+            "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_BASE}/${PARENT_DIR}/"
+        
+        if [ $? -eq 0 ]; then
+            SYNC_SUCCESS=true
+        fi
+    done
+    
+    if [ "$SYNC_SUCCESS" = true ]; then
         DIR_END=$(date +%s)
         DIR_DURATION=$((DIR_END - DIR_START))
         echo "✅ ${dir} 同步完成 (耗时: ${DIR_DURATION}秒)"
         ((SUCCESS_COUNT++))
     else
-        echo "❌ ${dir} 同步失败"
+        echo "❌ ${dir} 同步失败 (已重试 ${MAX_RETRIES} 次)"
         ((FAIL_COUNT++))
     fi
     echo ""
