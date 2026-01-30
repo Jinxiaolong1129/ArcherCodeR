@@ -1,0 +1,1359 @@
+# Copyright 2024 Bytedance Ltd. and/or its affiliates
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""
+Core functions to implement PPO algorithms.
+The function implemented in this file should be used by trainer with different distributed strategies to
+implement PPO-like algorithms.
+"""
+
+__all__ = ["register_adv_est", "get_adv_estimator_fn", "AdvantageEstimator"]
+
+from collections import defaultdict
+from enum import Enum
+from typing import List
+
+import copy
+import numpy as np
+import math
+import torch
+
+import verl.utils.torch_functional as verl_F
+
+ADV_ESTIMATOR_REGISTRY = {}
+
+
+def register_adv_est(name_or_enum):
+    """Decorator to register a advantage estimator function with a given name.
+
+    Args:
+        name_or_enum: `(str)` or `(AdvantageEstimator)`
+            The name or enum of the advantage estimator.
+
+    """
+
+    def decorator(fn):
+        name = name_or_enum.value if isinstance(name_or_enum, Enum) else name_or_enum
+        if name in ADV_ESTIMATOR_REGISTRY and ADV_ESTIMATOR_REGISTRY[name] != fn:
+            raise ValueError(f"Adv estimator {name} has already been registered: {ADV_ESTIMATOR_REGISTRY[name]} vs {fn}")
+        ADV_ESTIMATOR_REGISTRY[name] = fn
+        return fn
+
+    return decorator
+
+
+def get_adv_estimator_fn(name_or_enum):
+    """Get the advantage estimator function with a given name.
+
+    Args:
+        name_or_enum: `(str)` or `(AdvantageEstimator)`
+            The name or enum of the advantage estimator.
+
+    Returns:
+        `(callable)`: The advantage estimator function.
+    """
+    name = name_or_enum.value if isinstance(name_or_enum, Enum) else name_or_enum
+    if name not in ADV_ESTIMATOR_REGISTRY:
+        raise ValueError(f"Unknown advantage estimator simply: {name}")
+    return ADV_ESTIMATOR_REGISTRY[name]
+
+
+class AdvantageEstimator(str, Enum):
+    """Using an enumeration class to avoid spelling errors in adv_estimator.
+
+    Note(haibin.lin): this enum class is immutable after creation. Extending this
+    enum for new estimators may not be necessary since users can always just call
+    `verl.trainer.ppo.core_algos.register` with string name for a custom advantage
+    estimator instead.
+    """
+
+    GAE = "gae"
+    GRPO = "grpo"
+    REINFORCE_PLUS_PLUS = "reinforce_plus_plus"
+    REINFORCE_PLUS_PLUS_BASELINE = "reinforce_plus_plus_baseline"
+    REMAX = "remax"
+    RLOO = "rloo"
+    OPO = "opo"
+    GRPO_PASSK = "grpo_passk"
+    INTUITOR = "intuitor"
+    INTUITOR_SELECTIVE = "intuitor_selective"
+    INTUITOR_ENTROPY = "intuitor_entropy"
+    DACE = "dace"
+    TRAJECTORY_ENTROPY = "trajectory_entropy"
+    TOKEN_ENTROPY = "token_entropy"
+    PROB_DISPARITY = "prob_disparity"
+
+
+class AdaptiveKLController:
+    """
+    Adaptive KL controller described in the paper:
+    https://arxiv.org/pdf/1909.08593.pdf
+    """
+
+    def __init__(self, init_kl_coef, target_kl, horizon):
+        self.value = init_kl_coef
+        self.target = target_kl
+        self.horizon = horizon
+
+    def update(self, current_kl, n_steps):
+        target = self.target
+        proportional_error = np.clip(current_kl / target - 1, -0.2, 0.2)
+        mult = 1 + proportional_error * n_steps / self.horizon
+        self.value *= mult
+
+
+class FixedKLController:
+    """Fixed KL controller."""
+
+    def __init__(self, kl_coef):
+        self.value = kl_coef
+
+    def update(self, current_kl, n_steps):
+        pass
+
+
+def get_kl_controller(kl_ctrl):
+    if kl_ctrl.type == "fixed":
+        return FixedKLController(kl_coef=kl_ctrl.kl_coef)
+    elif kl_ctrl.type == "adaptive":
+        assert kl_ctrl.horizon > 0, f"horizon must be larger than 0. Got {kl_ctrl.horizon}"
+        return AdaptiveKLController(init_kl_coef=kl_ctrl.kl_coef, target_kl=kl_ctrl.target_kl, horizon=kl_ctrl.horizon)
+    else:
+        raise NotImplementedError
+
+
+@register_adv_est(AdvantageEstimator.GAE)  # or simply: @register_adv_est("gae")
+def compute_gae_advantage_return(
+    token_level_rewards: torch.Tensor,
+    values: torch.Tensor,
+    response_mask: torch.Tensor,
+    gamma: torch.Tensor,
+    lam: torch.Tensor,
+):
+    """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape is (bs, response_length)
+        values: `(torch.Tensor)`
+            shape is (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            shape is (bs, response_length). [EOS] mask. The token after [EOS] have mask zero.
+        gamma is `(float)`
+            discounted factor used in RL
+        lam: `(float)`
+            lambda value when computing Generalized Advantage Estimation (https://arxiv.org/abs/1506.02438)
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+
+    """
+    with torch.no_grad():
+        lastgaelam = 0
+        advantages_reversed = []
+        gen_len = token_level_rewards.shape[-1]
+
+        for t in reversed(range(gen_len)):
+            nextvalues = values[:, t + 1] if t < gen_len - 1 else 0.0
+            delta = token_level_rewards[:, t] + gamma * nextvalues - values[:, t]
+            lastgaelam = delta + gamma * lam * lastgaelam
+            advantages_reversed.append(lastgaelam)
+        advantages = torch.stack(advantages_reversed[::-1], dim=1)
+
+        returns = advantages + values
+        advantages = verl_F.masked_whiten(advantages, response_mask)
+    return advantages, returns
+
+
+# NOTE(sgm): this implementation only consider outcome supervision, where the reward is a scalar.
+@register_adv_est(AdvantageEstimator.GRPO)  # or simply: @register_adv_est("grpo")
+def compute_grpo_outcome_advantage(
+    token_level_rewards: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: str = True,
+):
+    """
+    Compute advantage for GRPO, operating only on Outcome reward
+    (with only one scalar reward for each response).
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape is (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            shape is (bs, response_length)
+        norm_adv_by_std_in_grpo: (bool)
+            whether to scale the GRPO advantage.
+            If True, the advantage is scaled by the std, as in the original GRPO.
+            If False, the advantage is not scaled, as in Dr.GRPO (https://arxiv.org/abs/2503.20783).
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape is (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape is (bs, response_length)
+    """
+    scores = token_level_rewards.sum(dim=-1)
+
+    id2score = defaultdict(list)
+    id2mean = {}
+    id2std = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0)
+                id2std[idx] = torch.tensor(1.0)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
+                id2std[idx] = torch.std(torch.tensor([id2score[idx]]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        scores = scores.unsqueeze(-1) * response_mask
+
+    return scores, scores
+
+
+@register_adv_est(AdvantageEstimator.INTUITOR)
+def compute_intuitor_advantage(
+    self_certaintys: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+):
+    """
+    Compute advantage for Intuitor algorithm using self-certainty as reward signal.
+    
+    Intuitor uses the model's self-certainty (confidence in its own predictions) 
+    as an intrinsic reward signal, eliminating the need for external reward models.
+    
+    Args:
+        self_certaintys: `(torch.Tensor)`
+            Token-level self-certainty values, shape (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            Mask for response tokens, shape (bs, response_length)
+        index: `(np.ndarray)`
+            Unique identifiers for grouping responses from same prompt
+        epsilon: `(float)`
+            Small constant to avoid division by zero
+        norm_adv_by_std_in_grpo: `(bool)`
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: `(torch.Tensor)`
+            Computed advantages, shape (bs, response_length)
+        returns: `(torch.Tensor)`
+            Computed returns (same as advantages for outcome-based methods), shape (bs, response_length)
+    """
+    # Convert response_mask to float for proper division
+    response_mask_float = response_mask.float()
+    
+    # Compute sentence-wise mean self-certainty
+    # Multiply by response_mask to zero out non-response tokens
+    masked_certainty = self_certaintys * response_mask_float  # [B, T]
+    sum_certainty = masked_certainty.sum(dim=-1)  # [B]
+    count = response_mask_float.sum(dim=-1) + epsilon  # avoid divide-by-zero; [B]
+    sentence_wise_certainty = sum_certainty / count  # [B]
+    
+    # Use sentence-wise certainty as scores for GRPO-style advantage computation
+    scores = sentence_wise_certainty
+    
+    id2score = defaultdict(list)
+    id2mean = {}
+    id2std = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.DACE)
+def compute_dace_advantage(
+    token_level_rewards: torch.Tensor,
+    old_log_probs: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    alpha_scale: float = 0.05,
+    beta_threshold: float = 0.4,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config=None,
+    **kwargs,
+):
+    """
+    Compute advantage for DACE (Difficulty-Aware Certainty Exploration).
+    
+    DACE adaptively combines external rewards with an intrinsic certainty-based reward
+    that encourages exploration on difficult tasks and exploitation on easy tasks.
+    
+    Key components:
+    1. Difficulty estimation: diff(x) = 1 - mean(verify(y)) per prompt
+    2. Certainty metric: C(y,x) = -mean(log_prob(y|x))
+    3. Adaptive coefficient: α(x) = α_scale * sign(β_threshold - diff(x))
+    4. Intrinsic reward: R_int = α(x) * C(y,x)
+    5. Total reward: R_total = R_ext + R_int
+    
+    Args:
+        token_level_rewards: (torch.Tensor)
+            External reward (e.g., correctness), shape (bs, response_length)
+        old_log_probs: (torch.Tensor)
+            Log probabilities of generated tokens, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        alpha_scale: (float)
+            Scaling factor for the intrinsic reward coefficient
+        beta_threshold: (float)
+            Difficulty threshold determining exploration vs exploitation
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+        config: (dict)
+            Optional configuration dictionary
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 DACE ADVANTAGE COMPUTATION STARTED')
+    print('=' * 80)
+    print(f"📊 DACE Hyperparameters:")
+    print(f"  ├─ α_scale (intrinsic reward scaling): {alpha_scale}")
+    print(f"  ├─ β_threshold (difficulty threshold): {beta_threshold}")
+    print(f"  ├─ norm_adv_by_std_in_grpo: {norm_adv_by_std_in_grpo}")
+    print(f"  └─ epsilon: {epsilon}")
+    print(f"📦 Batch info:")
+    print(f"  ├─ Batch size: {token_level_rewards.shape[0]}")
+    print(f"  └─ Response length: {token_level_rewards.shape[1]}")
+    print('-' * 80)
+    
+    with torch.no_grad():
+        # 1. Compute external rewards (correctness scores)
+        print("📝 Step 1: Computing external rewards...")
+        external_scores = token_level_rewards.sum(dim=-1)  # (bs,)
+        print(f"  ├─ External reward range: [{external_scores.min().item():.4f}, {external_scores.max().item():.4f}]")
+        print(f"  ├─ External reward mean: {external_scores.mean().item():.4f}")
+        print(f"  └─ Correct samples: {(external_scores > 0).sum().item()}/{len(external_scores)}")
+        
+        # 2. Compute certainty metric: C(y,x) = -mean(log_prob(y|x))
+        # Note: Higher C value = lower prob = model is LESS confident (more uncertain)
+        #       Lower C value = higher prob = model is MORE confident (more certain)
+        print("📝 Step 2: Computing certainty metric...")
+        response_mask_float = response_mask.float()
+        masked_log_probs = old_log_probs * response_mask_float  # (bs, response_length)
+        sum_log_probs = masked_log_probs.sum(dim=-1)  # (bs,)
+        count = response_mask_float.sum(dim=-1) + epsilon  # (bs,)
+        certainty = -sum_log_probs / count  # (bs,) - negative avg log prob
+        print(f"  ├─ Certainty range: [{certainty.min().item():.4f}, {certainty.max().item():.4f}]")
+        print(f"  ├─ Certainty mean: {certainty.mean().item():.4f}")
+        print(f"  └─ Note: Higher C = higher -log_prob = lower confidence (uncertain)")
+        print(f"      Lower C = lower -log_prob = higher confidence (certain)")
+        
+        # 3. Estimate difficulty per prompt
+        # diff(x) = 1 - mean(verify(y)) where verify(y) is binary reward
+        print("📝 Step 3: Estimating difficulty per prompt...")
+        id2rewards = defaultdict(list)
+        id2certainties = defaultdict(list)
+        id2indices = defaultdict(list)
+        
+        bsz = external_scores.shape[0]
+        for i in range(bsz):
+            prompt_id = index[i]
+            id2rewards[prompt_id].append(external_scores[i])
+            id2certainties[prompt_id].append(certainty[i])
+            id2indices[prompt_id].append(i)
+        
+        print(f"  ├─ Number of unique prompts: {len(id2rewards)}")
+        print(f"  └─ Responses per prompt: {[len(id2rewards[pid]) for pid in list(id2rewards.keys())[:3]]}... (showing first 3)")
+        
+        # Compute difficulty and alpha for each prompt
+        id2difficulty = {}
+        id2alpha = {}
+        
+        print("📝 Step 4: Computing difficulty and adaptive coefficients...")
+        hard_tasks = 0
+        easy_tasks = 0
+        
+        for prompt_id in id2rewards:
+            rewards = torch.stack(id2rewards[prompt_id])
+            
+            # Normalize rewards to [0, 1] range for difficulty calculation
+            # This handles cases where rewards might be [-1, 1] instead of [0, 1]
+            min_reward = rewards.min()
+            max_reward = rewards.max()
+            if max_reward > min_reward:
+                # Normalize to [0, 1]: (r - min) / (max - min)
+                normalized_rewards = (rewards - min_reward) / (max_reward - min_reward)
+            else:
+                # All rewards are the same, set to 1.0 or 0.0 based on value
+                normalized_rewards = torch.ones_like(rewards) if rewards[0] > 0 else torch.zeros_like(rewards)
+            
+            # Difficulty = 1 - success_rate (where success_rate is in [0, 1])
+            success_rate = torch.mean(normalized_rewards)
+            difficulty = 1.0 - success_rate
+            id2difficulty[prompt_id] = difficulty
+            
+            # Adaptive coefficient: α = α_scale * sign(β_threshold - diff)
+            # If diff > threshold (hard): α is negative → encourage exploration (low certainty)
+            # If diff < threshold (easy): α is positive → encourage exploitation (high certainty)
+            sign_val = torch.sign(beta_threshold - difficulty)
+            alpha = alpha_scale * sign_val
+            id2alpha[prompt_id] = alpha
+            
+            if difficulty > beta_threshold:
+                hard_tasks += 1
+            else:
+                easy_tasks += 1
+        
+        # Show difficulty and alpha statistics
+        all_difficulties = torch.stack([id2difficulty[pid] for pid in id2difficulty.keys()])
+        all_alphas = torch.stack([id2alpha[pid] for pid in id2alpha.keys()])
+        print(f"  ├─ Difficulty range: [{all_difficulties.min().item():.4f}, {all_difficulties.max().item():.4f}]")
+        print(f"  ├─ Difficulty mean: {all_difficulties.mean().item():.4f}")
+        print(f"  ├─ β_threshold: {beta_threshold}")
+        print(f"  ├─ Hard tasks (diff > β): {hard_tasks}/{len(id2rewards)} ({100*hard_tasks/len(id2rewards):.1f}%)")
+        print(f"  ├─ Easy tasks (diff < β): {easy_tasks}/{len(id2rewards)} ({100*easy_tasks/len(id2rewards):.1f}%)")
+        print(f"  ├─ Alpha range: [{all_alphas.min().item():.4f}, {all_alphas.max().item():.4f}]")
+        print(f"  └─ Negative α → explore (low certainty), Positive α → exploit (high certainty)")
+        
+        # 4. Compute intrinsic rewards: R_int = α(x) * C(y,x)
+        print("📝 Step 5: Computing intrinsic rewards...")
+        intrinsic_rewards = torch.zeros_like(external_scores)
+        for i in range(bsz):
+            prompt_id = index[i]
+            alpha = id2alpha[prompt_id]
+            intrinsic_rewards[i] = alpha * certainty[i]
+        
+        print(f"  ├─ Intrinsic reward range: [{intrinsic_rewards.min().item():.4f}, {intrinsic_rewards.max().item():.4f}]")
+        print(f"  ├─ Intrinsic reward mean: {intrinsic_rewards.mean().item():.4f}")
+        print(f"  └─ Intrinsic reward std: {intrinsic_rewards.std().item():.4f}")
+        
+        # 5. Combine external and intrinsic rewards
+        print("📝 Step 6: Combining external and intrinsic rewards...")
+        total_scores = external_scores + intrinsic_rewards
+        print(f"  ├─ Total reward range: [{total_scores.min().item():.4f}, {total_scores.max().item():.4f}]")
+        print(f"  ├─ Total reward mean: {total_scores.mean().item():.4f}")
+        print(f"  └─ Total reward std: {total_scores.std().item():.4f}")
+        
+        # 6. Compute GRPO-style advantages using total rewards
+        print("📝 Step 7: Computing GRPO-style advantages...")
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        for i in range(bsz):
+            id2score[index[i]].append(total_scores[i])
+        
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=total_scores.device)
+                id2std[idx] = torch.tensor(1.0, device=total_scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        
+        # Normalize advantages
+        advantages_scalar = torch.zeros_like(total_scores)
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                advantages_scalar[i] = (total_scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                advantages_scalar[i] = total_scores[i] - id2mean[index[i]]
+        
+        print(f"  ├─ Advantage range: [{advantages_scalar.min().item():.4f}, {advantages_scalar.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {advantages_scalar.mean().item():.4f}")
+        print(f"  ├─ Advantage std: {advantages_scalar.std().item():.4f}")
+        print(f"  ├─ Positive advantages: {(advantages_scalar > 0).sum().item()}/{len(advantages_scalar)}")
+        print(f"  └─ Negative advantages: {(advantages_scalar < 0).sum().item()}/{len(advantages_scalar)}")
+        
+        # Broadcast to token level
+        advantages = advantages_scalar.unsqueeze(-1) * response_mask_float
+    
+    print('-' * 80)
+    print('✅ DACE ADVANTAGE COMPUTATION COMPLETED')
+    print('=' * 80)
+    
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.TRAJECTORY_ENTROPY)
+def compute_trajectory_entropy_advantage(
+    old_log_probs: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    **kwargs,
+):
+    """
+    Compute advantage using Trajectory-Level Entropy as intrinsic reward.
+    
+    Formula: r(x, y) = 1/|y| * Σ log π_θ(y_t|x, y_<t)
+    
+    This is the average log probability of the generated sequence, which measures
+    how likely the model thinks its own generation is. Higher values (closer to 0)
+    indicate the model is more confident in the trajectory.
+    
+    Args:
+        old_log_probs: (torch.Tensor)
+            Log probabilities of generated tokens, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 TRAJECTORY-LEVEL ENTROPY ADVANTAGE COMPUTATION')
+    print('=' * 80)
+    
+    with torch.no_grad():
+        # Convert response_mask to float for proper division
+        response_mask_float = response_mask.float()
+        
+        # Compute trajectory-level entropy: mean log probability
+        # log_probs are typically negative (since probabilities are in [0,1])
+        # Higher (closer to 0) = more confident trajectory
+        masked_log_probs = old_log_probs * response_mask_float  # [B, T]
+        sum_log_probs = masked_log_probs.sum(dim=-1)  # [B]
+        count = response_mask_float.sum(dim=-1) + epsilon  # [B]
+        trajectory_entropy = sum_log_probs / count  # [B] - average log prob
+        
+        print(f"📊 Trajectory Entropy Statistics:")
+        print(f"  ├─ Batch size: {old_log_probs.shape[0]}")
+        print(f"  ├─ Response length: {old_log_probs.shape[1]}")
+        print(f"  ├─ Trajectory entropy range: [{trajectory_entropy.min().item():.4f}, {trajectory_entropy.max().item():.4f}]")
+        print(f"  ├─ Trajectory entropy mean: {trajectory_entropy.mean().item():.4f}")
+        print(f"  └─ Note: Higher (closer to 0) = more confident, Lower (more negative) = less confident")
+        
+        # Use trajectory entropy as scores for GRPO-style advantage computation
+        scores = trajectory_entropy
+        
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+        
+        print(f"📈 Advantage Statistics:")
+        print(f"  ├─ Advantage range: [{scores.min().item():.4f}, {scores.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {scores.mean().item():.4f}")
+        print(f"  ├─ Positive advantages: {(scores > 0).sum().item()}/{bsz}")
+        print(f"  └─ Negative advantages: {(scores < 0).sum().item()}/{bsz}")
+        print('=' * 80)
+    
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.TOKEN_ENTROPY)
+def compute_token_entropy_advantage(
+    entropys: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    **kwargs,
+):
+    """
+    Compute advantage using Token-Level Entropy as intrinsic reward.
+    
+    Formula: r(x, y) = -1/|y| * Σ H(π_θ(·|x, y_<t))
+    
+    This uses the negative average entropy of the token distributions. Lower entropy
+    (more peaked distribution) indicates higher confidence. By negating, we reward
+    confident (low entropy) generations.
+    
+    Args:
+        entropys: (torch.Tensor)
+            Token-level entropy values, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 TOKEN-LEVEL ENTROPY ADVANTAGE COMPUTATION')
+    print('=' * 80)
+    
+    with torch.no_grad():
+        # Convert response_mask to float for proper division
+        response_mask_float = response_mask.float()
+        
+        # Compute negative average token-level entropy
+        # Entropy is typically positive (0 to log(vocab_size))
+        # Lower entropy = more confident = higher reward (after negation)
+        masked_entropy = entropys * response_mask_float  # [B, T]
+        sum_entropy = masked_entropy.sum(dim=-1)  # [B]
+        count = response_mask_float.sum(dim=-1) + epsilon  # [B]
+        avg_entropy = sum_entropy / count  # [B] - average entropy
+        token_entropy_reward = -avg_entropy  # [B] - negate to reward low entropy
+        
+        print(f"📊 Token Entropy Statistics:")
+        print(f"  ├─ Batch size: {entropys.shape[0]}")
+        print(f"  ├─ Response length: {entropys.shape[1]}")
+        print(f"  ├─ Average entropy range: [{avg_entropy.min().item():.4f}, {avg_entropy.max().item():.4f}]")
+        print(f"  ├─ Average entropy mean: {avg_entropy.mean().item():.4f}")
+        print(f"  ├─ Token entropy reward range: [{token_entropy_reward.min().item():.4f}, {token_entropy_reward.max().item():.4f}]")
+        print(f"  ├─ Token entropy reward mean: {token_entropy_reward.mean().item():.4f}")
+        print(f"  └─ Note: Higher reward (less negative) = lower entropy = more confident")
+        
+        # Use token entropy reward as scores for GRPO-style advantage computation
+        scores = token_entropy_reward
+        
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+        
+        print(f"📈 Advantage Statistics:")
+        print(f"  ├─ Advantage range: [{scores.min().item():.4f}, {scores.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {scores.mean().item():.4f}")
+        print(f"  ├─ Positive advantages: {(scores > 0).sum().item()}/{bsz}")
+        print(f"  └─ Negative advantages: {(scores < 0).sum().item()}/{bsz}")
+        print('=' * 80)
+    
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.PROB_DISPARITY)
+def compute_prob_disparity_advantage(
+    prob_disparitys: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    **kwargs,
+):
+    """
+    Compute advantage using Probability Disparity as intrinsic reward.
+    
+    Formula: r(x, y) = 1/M * Σ [max π_θ(a_t|...) - second_max π_θ(a_t|...)]
+    
+    This measures the gap between the top-1 and top-2 probabilities at each token.
+    Larger disparity indicates the model is more confident in its top choice.
+    
+    Args:
+        prob_disparitys: (torch.Tensor)
+            Token-level probability disparity values, shape (bs, response_length)
+        response_mask: (torch.Tensor)
+            Mask for response tokens, shape (bs, response_length)
+        index: (np.ndarray)
+            Unique identifiers for grouping responses from same prompt
+        epsilon: (float)
+            Small constant for numerical stability
+        norm_adv_by_std_in_grpo: (bool)
+            Whether to normalize advantages by standard deviation
+            
+    Returns:
+        advantages: (torch.Tensor)
+            Computed advantages, shape (bs, response_length)
+        returns: (torch.Tensor)
+            Computed returns (same as advantages for outcome-based methods)
+    """
+    print('=' * 80)
+    print('🚀 PROBABILITY DISPARITY ADVANTAGE COMPUTATION')
+    print('=' * 80)
+    
+    with torch.no_grad():
+        # Convert response_mask to float for proper division
+        response_mask_float = response_mask.float()
+        
+        # Compute average probability disparity
+        # Higher disparity = more confident (clear winner)
+        masked_disparity = prob_disparitys * response_mask_float  # [B, T]
+        sum_disparity = masked_disparity.sum(dim=-1)  # [B]
+        count = response_mask_float.sum(dim=-1) + epsilon  # [B]
+        avg_disparity = sum_disparity / count  # [B] - average disparity
+        
+        print(f"📊 Probability Disparity Statistics:")
+        print(f"  ├─ Batch size: {prob_disparitys.shape[0]}")
+        print(f"  ├─ Response length: {prob_disparitys.shape[1]}")
+        print(f"  ├─ Average disparity range: [{avg_disparity.min().item():.4f}, {avg_disparity.max().item():.4f}]")
+        print(f"  ├─ Average disparity mean: {avg_disparity.mean().item():.4f}")
+        print(f"  └─ Note: Higher disparity = more confident (larger gap between top-1 and top-2)")
+        
+        # Use probability disparity as scores for GRPO-style advantage computation
+        scores = avg_disparity
+        
+        id2score = defaultdict(list)
+        id2mean = {}
+        id2std = {}
+        
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0, device=scores.device)
+                id2std[idx] = torch.tensor(1.0, device=scores.device)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+                id2std[idx] = torch.std(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            if norm_adv_by_std_in_grpo:
+                scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+            else:
+                scores[i] = scores[i] - id2mean[index[i]]
+        
+        # Broadcast sentence-level advantages back to token-level
+        advantages = scores.unsqueeze(-1) * response_mask_float
+        
+        print(f"📈 Advantage Statistics:")
+        print(f"  ├─ Advantage range: [{scores.min().item():.4f}, {scores.max().item():.4f}]")
+        print(f"  ├─ Advantage mean: {scores.mean().item():.4f}")
+        print(f"  ├─ Positive advantages: {(scores > 0).sum().item()}/{bsz}")
+        print(f"  └─ Negative advantages: {(scores < 0).sum().item()}/{bsz}")
+        print('=' * 80)
+    
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.GRPO_PASSK)  # or simply: @register_adv_est("grpo_passk")
+def compute_grpo_passk_outcome_advantage(
+    token_level_rewards: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config=None,
+    **kwargs,
+):
+    """
+    Compute advantage for Pass@k using a GRPO-style outcome reward formulation.
+    Only the best response per group gets a non-zero advantage: r_max - r_second_max.
+
+    Implemented as described in https://arxiv.org/abs/2503.19595.
+
+    Args:
+        token_level_rewards: (bs, response_length)
+        response_mask: (bs, response_length)
+        index: (bs,) → group ID per sample
+        epsilon: float for numerical stability
+        config: (dict) algorithm settings, which contains "norm_adv_by_std_in_grpo"
+
+    Returns:
+        advantages: (bs, response_length)
+        returns: (bs, response_length)
+    """
+    assert config is not None
+    # if True, normalize advantage by std within group
+    norm_adv_by_std_in_grpo = config.get("norm_adv_by_std_in_grpo", True)
+    scores = token_level_rewards.sum(dim=-1)  # (bs,)
+    advantages = torch.zeros_like(scores)
+
+    id2scores = defaultdict(list)
+    id2indices = defaultdict(list)
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            idx = index[i]
+            id2scores[idx].append(scores[i])
+            id2indices[idx].append(i)
+
+        for idx in id2scores:
+            rewards = torch.stack(id2scores[idx])  # (k,)
+            if rewards.numel() < 2:
+                raise ValueError(f"Pass@k requires at least 2 samples per group. Got {rewards.numel()} for group {idx}.")
+            topk, topk_idx = torch.topk(rewards, 2)
+            r_max, r_second_max = topk[0], topk[1]
+            i_max = id2indices[idx][topk_idx[0].item()]
+            advantage = r_max - r_second_max
+            if norm_adv_by_std_in_grpo:
+                std = torch.std(rewards)
+                advantage = advantage / (std + epsilon)
+            advantages[i_max] = advantage
+
+    advantages = advantages.unsqueeze(-1) * response_mask
+    return advantages, advantages
+
+
+@register_adv_est(AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE)  # or simply: @register_adv_est("reinforce_plus_plus_baseline")
+def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: torch.Tensor, epsilon: float = 1e-6, config=None, **kwargs):
+    """
+    Compute advantage for RF++-baseline (https://arxiv.org/abs/2501.03262), operating only on Outcome reward
+    (with only one scalar reward for each response).
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape: (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            shape: (bs, response_length)
+        config: (dict) algorithm config
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+    """
+    response_length = token_level_rewards.shape[-1]
+    scores = token_level_rewards.sum(dim=-1)
+
+    id2score = defaultdict(list)
+    id2mean = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            scores[i] = scores[i] - id2mean[index[i]]
+
+        scores = scores.unsqueeze(-1).tile([1, response_length]) * response_mask
+        scores = verl_F.masked_whiten(scores, response_mask) * response_mask
+
+    return scores, scores
+
+
+@register_adv_est(AdvantageEstimator.RLOO)  # or simply: @register_adv_est("rloo")
+def compute_rloo_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: np.ndarray, epsilon: float = 1e-6, config=None, **kwargs):
+    """
+    Compute advantage for RLOO based on https://arxiv.org/abs/2402.14740
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape: (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            shape: (bs, response_length)
+        config: (dict) algorithm config
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+    """
+    scores = token_level_rewards.sum(dim=-1)
+
+    id2score = defaultdict(list)
+    id2mean = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            response_num = len(id2score[index[i]])
+            if response_num > 1:
+                scores[i] = scores[i] * response_num / (response_num - 1) - id2mean[index[i]] * response_num / (response_num - 1)
+        scores = scores.unsqueeze(-1) * response_mask
+
+    return scores, scores
+
+
+@register_adv_est(AdvantageEstimator.OPO)  # or simply: @register_adv_est("opo")
+def compute_opo_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: np.ndarray, epsilon: float = 1e-6, config=None, **kwargs):
+    """
+    Compute advantage for OPO based on https://arxiv.org/pdf/2505.23585
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape: (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            shape: (bs, response_length)
+        config: (dict) algorithm config
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+    """
+    response_length = response_mask.sum(dim=-1)
+    scores = token_level_rewards.sum(dim=-1)
+
+    id2score = defaultdict(list)
+    id2len = defaultdict(list)
+    id2bsl = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+            id2len[index[i]].append(response_length[i])
+
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2bsl[idx] = torch.tensor(0.0)
+            elif len(id2score[idx]) > 1:
+                score_tensor = torch.tensor(id2score[idx])
+                len_tensor = torch.tensor(id2len[idx])
+                id2bsl[idx] = (len_tensor * score_tensor).sum() / len_tensor.sum()
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            scores[i] = scores[i] - id2bsl[index[i]]
+        scores = scores.unsqueeze(-1) * response_mask
+
+    return scores, scores
+
+
+@register_adv_est(AdvantageEstimator.REINFORCE_PLUS_PLUS)  # or simply: @register_adv_est("reinforce_plus_plus")
+def compute_reinforce_plus_plus_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, config=None, **kwargs):
+    """
+    Compute advantage for REINFORCE++.
+    This implementation is based on the paper: https://arxiv.org/abs/2501.03262
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape: (bs, response_length)
+        response_mask: `(torch.Tensor)`
+            shape: (bs, response_length)
+        config: (dict) algorithm config
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+    """
+    assert config is not None
+    gamma = config.gamma
+    with torch.no_grad():
+        returns = torch.zeros_like(token_level_rewards)
+        running_return = 0
+
+        for t in reversed(range(token_level_rewards.shape[1])):
+            running_return = token_level_rewards[:, t] + gamma * running_return
+            returns[:, t] = running_return
+            # Reset after EOS
+            running_return = running_return * response_mask[:, t]
+
+        advantages = verl_F.masked_whiten(returns, response_mask)
+        advantages = advantages * response_mask
+
+    return advantages, returns
+
+
+@register_adv_est(AdvantageEstimator.REMAX)  # or simply: @register_adv_est("remax")
+def compute_remax_outcome_advantage(token_level_rewards: torch.Tensor, reward_baselines: torch.Tensor, response_mask: torch.Tensor, config=None, **kwargs):
+    """
+    Compute advantage for ReMax, operating only on Outcome reward
+    This implementation is based on the paper: https://arxiv.org/abs/2310.10505
+    (with only one scalar reward for each response).
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape: (bs, response_length)
+        reward_baselines: `(torch.Tensor)`
+            shape: (bs,)
+        response_mask: `(torch.Tensor)`
+            shape: (bs, response_length)
+        config: (dict) algorithm config
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+    """
+
+    with torch.no_grad():
+        returns = (token_level_rewards * response_mask).flip(dims=[-1]).cumsum(dim=-1).flip(dims=[-1])
+        advantages = returns - reward_baselines.unsqueeze(-1) * response_mask
+
+    return advantages, returns
+
+
+def compute_rewards(token_level_scores, old_log_prob, ref_log_prob, kl_ratio):
+    kl = old_log_prob - ref_log_prob
+    return token_level_scores - kl * kl_ratio
+
+
+def agg_loss(loss_mat: torch.Tensor, loss_mask: torch.Tensor, loss_agg_mode: str):
+    """
+    Aggregate the loss matrix into a scalar.
+
+    Args:
+        loss_mat: `(torch.Tensor)`:
+            shape: (bs, response_length)
+        loss_mask: `(torch.Tensor)`:
+            shape: (bs, response_length)
+        loss_agg_mode: (str) choices:
+            method to aggregate the loss matrix into a scalar.
+    Returns:
+        loss: `a scalar torch.Tensor`
+            aggregated loss
+    """
+    if loss_agg_mode == "token-mean":
+        loss = verl_F.masked_mean(loss_mat, loss_mask)
+    elif loss_agg_mode == "seq-mean-token-sum":
+        seq_losses = torch.sum(loss_mat * loss_mask, dim=-1)  # token-sum
+        loss = torch.mean(seq_losses)  # seq-mean
+    elif loss_agg_mode == "seq-mean-token-mean":
+        seq_losses = torch.sum(loss_mat * loss_mask, dim=-1) / torch.sum(loss_mask, dim=-1)  # token-mean
+        loss = torch.mean(seq_losses)  # seq-mean
+    elif loss_agg_mode == "seq-mean-token-sum-norm":
+        seq_losses = torch.sum(loss_mat * loss_mask, dim=-1)
+        loss = torch.sum(seq_losses) / loss_mask.shape[-1]  # The divisor
+        # (loss_mask.shape[-1]) should ideally be constant
+        # throughout training to well-replicate the DrGRPO paper.
+        # TODO: Perhaps add user-defined normalizer argument to
+        # agg_loss to ensure divisor stays constant throughout.
+    else:
+        raise ValueError(f"Invalid loss_agg_mode: {loss_agg_mode}")
+
+    return loss
+
+
+def compute_policy_loss(
+    old_log_prob,
+    log_prob,
+    advantages,
+    response_mask,
+    use_token_entropy_separate=False,
+    high_entropy_mask=None,
+    cliprange=None,
+    cliprange_low=None,
+    cliprange_high=None,
+    low_entropy_clip_ratio_low=None,
+    low_entropy_clip_ratio_high=None,
+    high_entropy_clip_ratio_low=None,
+    high_entropy_clip_ratio_high=None,
+    clip_ratio_c=3.0,
+    loss_agg_mode: str = "token-mean",
+):
+    """
+    Compute the clipped policy objective and related metrics for PPO.
+
+    Adapted from
+    https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py#L1122
+
+    Args:
+        old_log_prob (torch.Tensor):
+            Log-probabilities of actions under the old policy, shape (batch_size, response_length).
+        log_prob (torch.Tensor):
+            Log-probabilities of actions under the current policy, shape (batch_size, response_length).
+        advantages (torch.Tensor):
+            Advantage estimates for each action, shape (batch_size, response_length).
+        response_mask (torch.Tensor):
+            Mask indicating which tokens to include in the loss, shape (batch_size, response_length).
+        cliprange (float, optional):
+            Clipping parameter ε for standard PPO. See https://arxiv.org/abs/1707.06347.
+            Defaults to None (must be provided).
+        cliprange_low (float, optional):
+            Lower clip range for dual-clip PPO. Defaults to same as `cliprange`.
+        cliprange_high (float, optional):
+            Upper clip range for dual-clip PPO. Defaults to same as `cliprange`.
+        clip_ratio_c (float, optional):
+            Lower bound of the ratio for dual-clip PPO. See https://arxiv.org/pdf/1912.09729.
+            Defaults to 3.0.
+        loss_agg_mode (str, optional):
+            Aggregation mode for `agg_loss`. Defaults to "token-mean".
+    """
+    assert clip_ratio_c > 1.0, "The lower bound of the clip_ratio_c for dual-clip PPO should be greater than 1.0," + f" but get the value: {clip_ratio_c}."
+
+    negative_approx_kl = log_prob - old_log_prob
+    # Clamp negative_approx_kl for stability
+    negative_approx_kl = torch.clamp(negative_approx_kl, min=-20.0, max=20.0)
+    ratio = torch.exp(negative_approx_kl)
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+    pg_losses1 = -advantages * ratio
+
+    if cliprange_low is None:
+        cliprange_low = cliprange
+    if cliprange_high is None:
+        cliprange_high = cliprange
+
+    if use_token_entropy_separate:
+        # select cliprange_low or cliprange_high according to high_entropy_mask
+        clip_ratio = torch.where(high_entropy_mask.bool(), torch.clamp(ratio, 1 - low_entropy_clip_ratio_low, 1 + low_entropy_clip_ratio_high), torch.clamp(ratio, 1 - high_entropy_clip_ratio_low, 1 + high_entropy_clip_ratio_high))
+        pg_losses2 = -advantages * clip_ratio
+    else:
+        pg_losses2 = -advantages * torch.clamp(ratio, 1 - cliprange_low, 1 + cliprange_high)  # - clip(ratio, 1-cliprange, 1+cliprange) * A
+
+    clip_pg_losses1 = torch.maximum(pg_losses1, pg_losses2)  # max(-ratio * A, -clip(ratio, 1-cliprange, 1+cliprange) * A)
+    pg_clipfrac = verl_F.masked_mean(torch.gt(pg_losses2, pg_losses1).float(), response_mask)
+
+    pg_losses3 = -advantages * clip_ratio_c
+
+    clip_pg_losses2 = torch.min(pg_losses3, clip_pg_losses1)
+    pg_clipfrac_lower = verl_F.masked_mean(torch.gt(clip_pg_losses1, pg_losses3) * (advantages < 0).float(), response_mask)
+
+    pg_losses = torch.where(advantages < 0, clip_pg_losses2, clip_pg_losses1)
+    pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+
+    return pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower
+
+
+def compute_entropy_loss(logits, response_mask, loss_agg_mode: str = "token-mean"):
+    """Compute categorical entropy loss (For backward compatibility)
+
+    Args:
+        logits (torch.Tensor): shape is (bs, response_length, vocab_size)
+        response_mask (torch.Tensor): shape is (bs, response_length)
+
+    Returns:
+        entropy: a scalar torch.Tensor
+
+    """
+    # compute entropy
+    token_entropy = verl_F.entropy_from_logits(logits)  # (bs, response_len)
+    entropy_loss = agg_loss(loss_mat=token_entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+    return entropy_loss
+
+
+def compute_value_loss(vpreds: torch.Tensor, returns: torch.Tensor, values: torch.Tensor, response_mask: torch.Tensor, cliprange_value: float, loss_agg_mode: str = "token-mean"):
+    """
+    Compute the clipped value-function loss for PPO.
+
+    Copied from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py#L1151
+
+    Args:
+        vpreds (torch.FloatTensor):
+            Predicted values from the value head, shape (batch_size, response_length).
+        values (torch.FloatTensor):
+            Old (baseline) values from the value head, shape (batch_size, response_length).
+        returns (torch.FloatTensor):
+            Ground-truth returns, shape (batch_size, response_length).
+        response_mask (torch.Tensor):
+            Mask indicating which tokens to include in the value loss calculation.
+        cliprange_value (float):
+            Clip range for value prediction updates.
+        loss_agg_mode (str, optional):
+            Aggregation mode for `agg_loss`. Defaults to "token-mean".
+
+    Returns:
+        vf_loss (torch.FloatTensor):
+            A scalar tensor containing the aggregated value-function loss.
+        vf_clipfrac (float):
+            Fraction of elements where the clipped loss was used.
+    """
+    vpredclipped = verl_F.clip_by_value(vpreds, values - cliprange_value, values + cliprange_value)
+    vf_losses1 = (vpreds - returns) ** 2
+    vf_losses2 = (vpredclipped - returns) ** 2
+    clipped_vf_losses = torch.max(vf_losses1, vf_losses2)
+    vf_loss = 0.5 * agg_loss(loss_mat=clipped_vf_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+    vf_clipfrac = verl_F.masked_mean(torch.gt(vf_losses2, vf_losses1).float(), response_mask)
+    return vf_loss, vf_clipfrac
+
+
+def kl_penalty(logprob: torch.FloatTensor, ref_logprob: torch.FloatTensor, kl_penalty) -> torch.FloatTensor:
+    """Compute KL divergence given logprob and ref_logprob.
+    Copied from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py#L1104
+    See more description in http://joschu.net/blog/kl-approx.html
+
+    Args:
+        logprob:
+        ref_logprob:
+
+    Returns:
+
+    """
+    if kl_penalty in ("kl", "k1"):
+        return logprob - ref_logprob
+
+    if kl_penalty == "abs":
+        return (logprob - ref_logprob).abs()
+
+    if kl_penalty in ("mse", "k2"):
+        return 0.5 * (logprob - ref_logprob).square()
+
+    # J. Schulman. Approximating kl divergence, 2020.
+    # # URL http://joschu.net/blog/kl-approx.html.
+    if kl_penalty in ("low_var_kl", "k3"):
+        kl = ref_logprob - logprob
+        # For numerical stability
+        kl = torch.clamp(kl, min=-20, max=20)
+        ratio = torch.exp(kl)
+        kld = (ratio - kl - 1).contiguous()
+        return torch.clamp(kld, min=-10, max=10)
+
+    if kl_penalty == "full":
+        # so, here logprob and ref_logprob should contain the logits for every token in vocabulary
+        raise NotImplementedError
+
+    raise NotImplementedError
+
+
+def compute_pf_ppo_reweight_data(
+    data,
+    reweight_method: str = "pow",
+    weight_pow: float = 2.0,
+):
+    """Reweight the data based on the token_level_scores.
+
+    Args:
+        data: DataProto object, containing batch, non_tensor_batch and meta_info
+        reweight_method: str, choices: "pow", "max_min", "max_random"
+        weight_pow: float, the power of the weight
+
+    Returns:
+
+    """
+
+    @torch.no_grad()
+    def compute_weights(scores: torch.Tensor, reweight_method: str, weight_pow: float) -> torch.Tensor:
+        if reweight_method == "pow":
+            weights = torch.pow(torch.abs(scores), weight_pow)
+        elif reweight_method == "max_min":
+            max_score = torch.max(scores)
+            min_score = torch.min(scores)
+            weights = torch.where((scores == max_score) | (scores == min_score), 1.0, 0.0)
+        elif reweight_method == "max_random":
+            max_score = torch.max(scores)
+            weights = torch.where(scores == max_score, 0.4, 0.1)
+        else:
+            raise ValueError(f"Unsupported reweight_method: {reweight_method}")
+        return weights
+
+    scores = data.batch["token_level_scores"].sum(dim=-1)
+    weights = compute_weights(scores, reweight_method, weight_pow)
+    weights = torch.clamp(weights + 1e-8, min=1e-8)
+
+    batch_size = scores.shape[0]
+    sample_indices = torch.multinomial(weights, batch_size, replacement=True)
+
+    resampled_batch = {key: tensor[sample_indices] for key, tensor in data.batch.items()}
+
+    sample_indices_np = sample_indices.numpy()
+    resampled_non_tensor_batch = {}
+    for key, array in data.non_tensor_batch.items():
+        if isinstance(array, np.ndarray):
+            resampled_non_tensor_batch[key] = array[sample_indices_np]
+        else:
+            resampled_non_tensor_batch[key] = [array[i] for i in sample_indices_np]
+
+    resampled_meta_info = {}
+    for key, value in data.meta_info.items():
+        if isinstance(value, list) and len(value) == batch_size:
+            resampled_meta_info[key] = [value[i] for i in sample_indices_np]
+        else:
+            resampled_meta_info[key] = value
+
+    from copy import deepcopy
+
+    resampled_data = deepcopy(data)
+    resampled_data.batch = type(data.batch)(resampled_batch)
+    resampled_data.batch.batch_size = data.batch.batch_size
+    resampled_data.non_tensor_batch = resampled_non_tensor_batch
+    resampled_data.meta_info = resampled_meta_info
+
+    return resampled_data
