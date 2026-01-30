@@ -1,0 +1,4 @@
+/scratch/jin509/self_RL/Archer2.0/output/ArcherCodeR
+
+帮我分析一下eval结果。主要分析还有哪些eval没有跑完。@tools/batch_merge_eval_aime_16k_part2.sh @tools/batch_merge_eval_aime_16k_part1.sh @tools/batch_merge_eval_aime_part2.sh @tools/batch_merge_eval_aime.sh @tools/batch_merge_eval_lcb_3a100.sh @tools/batch_merge_eval_lcb_5gpu.sh @tools/batch_merge_eval_lcb_16k_3a100.sh @tools/batch_merge_eval_lcb_16k_5gpu.sh @tools/batch_merge_eval_lcb_combined_3a100.sh @tools/batch_merge_eval_lcb_combined_5gpu.sh @tools/batch_merge_eval_lcb_v6_3a100.sh @tools/batch_merge_eval_lcb_v6_5gpu.sh @tools/batch_merge_eval_minerva_part1.sh @tools/batch_merge_eval_minerva_part2.sh 
+实验可以参考这些脚本，主要是aime24 25, lcbv5 v6, 8k, 16k等，不同checkpoint等.
