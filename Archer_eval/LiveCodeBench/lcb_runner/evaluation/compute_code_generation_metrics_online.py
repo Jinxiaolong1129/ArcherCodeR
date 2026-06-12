@@ -16,6 +16,9 @@ sys.set_int_max_str_digits(50000)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import json
+import base64
+import zlib
+import pickle
 import multiprocessing
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -265,6 +268,12 @@ parser.add_argument(
     type=int,
     help="Number of parallel CPU workers for evaluation (default: 128)"
 )
+parser.add_argument(
+    "--benchmark_json",
+    default=None,
+    type=str,
+    help="Local benchmark json file path (preferred; skips HF download).",
+)
 args = parser.parse_args()
 
 # 版本配置
@@ -286,6 +295,115 @@ def extract_answer(model_solution):
         code = match[-1]
         return code
 
+
+def _parse_json_if_needed(obj):
+    if isinstance(obj, str):
+        return json.loads(obj)
+    return obj
+
+
+def _normalize_test_list(obj):
+    """Return a flat list of {'input','output'} test dicts."""
+    try:
+        obj = _parse_json_if_needed(obj)
+    except Exception:
+        # Some v6 private_test_cases are compressed/base64-encoded payloads.
+        if isinstance(obj, str):
+            try:
+                obj = pickle.loads(zlib.decompress(base64.b64decode(obj.encode("utf-8"))))
+                obj = _parse_json_if_needed(obj)
+            except Exception:
+                return []
+        else:
+            return []
+    if isinstance(obj, list):
+        return [x for x in obj if isinstance(x, dict)]
+    return []
+
+
+def _extract_prompt_text(row):
+    prompt_val = row.get("prompt")
+    # Common format: [{'role':'user','content':'...'}]
+    if isinstance(prompt_val, list) and prompt_val:
+        first = prompt_val[0]
+        if isinstance(first, dict) and "content" in first:
+            return first["content"]
+        if isinstance(first, str):
+            return first
+    # Fallbacks for other local dumps
+    for key in ("question_content", "question", "instruction"):
+        if isinstance(row.get(key), str):
+            return row[key]
+    return None
+
+
+def _extract_tests_from_ground_truth(ground_truth_raw):
+    """
+    Support both formats:
+    - v5 style: ground_truth is JSON list of test dicts
+    - v6 style: ground_truth is JSON object with public/private_test_cases
+    """
+    gt = _parse_json_if_needed(ground_truth_raw)
+
+    # v5-style direct list
+    if isinstance(gt, list):
+        return _normalize_test_list(gt)
+
+    # v6-style object
+    if isinstance(gt, dict):
+        tests = []
+        for k in ("public_test_cases", "private_test_cases"):
+            if k in gt:
+                tests.extend(_normalize_test_list(gt[k]))
+        return tests
+
+    return []
+
+
+def build_eval_samples_from_local_benchmark(benchmark_json_path):
+    print(f"Loading local benchmark json: {benchmark_json_path}")
+    with open(benchmark_json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    prompt_to_eval_sample = {}
+    bad_rows = 0
+    for row in data:
+        prompt_text = _extract_prompt_text(row)
+        if not isinstance(prompt_text, str) or len(prompt_text) == 0:
+            bad_rows += 1
+            continue
+
+        reward_model = row.get("reward_model", {})
+        ground_truth_raw = reward_model.get("ground_truth") if isinstance(reward_model, dict) else None
+        if ground_truth_raw is None:
+            bad_rows += 1
+            continue
+        try:
+            tests = _extract_tests_from_ground_truth(ground_truth_raw)
+        except Exception:
+            bad_rows += 1
+            continue
+        if not isinstance(tests, list) or len(tests) == 0:
+            bad_rows += 1
+            continue
+
+        inputs = [t.get("input", "") for t in tests]
+        outputs = [t.get("output", "") for t in tests]
+        eval_sample = {
+            "input_output": json.dumps(
+                {
+                    "inputs": inputs,
+                    "outputs": outputs,
+                    "fn_name": None,
+                }
+            )
+        }
+        prompt_to_eval_sample[prompt_text] = eval_sample
+
+    print(f"Loaded local benchmark prompts: {len(prompt_to_eval_sample)}, skipped bad rows: {bad_rows}")
+    return prompt_to_eval_sample
+
+
 if __name__ == "__main__":
 
     parquet_file = args.eval_file
@@ -294,14 +412,6 @@ if __name__ == "__main__":
     print(f"CSV path: {csv_path}")
     
     if not os.path.exists(csv_path):
-        version_config = LCB_VERSION_CONFIG[args.lcb_version]
-        print(f"Using LCB version: {args.lcb_version}, config: {version_config}")
-        lcb_dataset = load_code_generation_dataset(
-            release_version=version_config["release_version"],
-            start_date=version_config["start_date"],
-            end_date=version_config["end_date"]
-        )
-        
         dataframe = pl.read_parquet(parquet_file)
 
         prompt2responses = {}
@@ -322,24 +432,56 @@ if __name__ == "__main__":
                 responses.append(solution_code)
             prompt2responses[prompt] = responses
 
-        eval_samples = [instance.get_evaluation_sample() for instance in lcb_dataset]
+        eval_samples = []
         generations = []
         matched_count = 0
-        unmatched_questions = []
-        for i in range(len(lcb_dataset)):
-            found = False
-            for prompt in prompt2responses:
-                if lcb_dataset[i].question_content in prompt:
-                    generations.append(prompt2responses[prompt])
-                    matched_count += 1
-                    found = True
-                    break  # 找到匹配后跳出，避免重复匹配
-            if not found:
-                unmatched_questions.append(lcb_dataset[i].question_title)
-        
-        print(f"Matched {matched_count}/{len(lcb_dataset)} questions")
-        if unmatched_questions:
-            print(f"Unmatched questions: {unmatched_questions[:5]}...")  # 只显示前5个
+
+        if args.benchmark_json:
+            prompt_to_eval_sample = build_eval_samples_from_local_benchmark(args.benchmark_json)
+            unmatched_prompts = []
+            for bench_prompt, eval_sample in prompt_to_eval_sample.items():
+                responses = prompt2responses.get(bench_prompt)
+                if responses is None:
+                    # Fallback fuzzy match for prompt template variations.
+                    for p, r in prompt2responses.items():
+                        if bench_prompt in p or p in bench_prompt:
+                            responses = r
+                            break
+                if responses is None:
+                    unmatched_prompts.append(bench_prompt[:120])
+                    continue
+                eval_samples.append(eval_sample)
+                generations.append(responses)
+                matched_count += 1
+            print(f"Matched {matched_count}/{len(prompt_to_eval_sample)} local benchmark prompts")
+            if unmatched_prompts:
+                print(f"Unmatched local prompts: {unmatched_prompts[:5]}...")
+        else:
+            version_config = LCB_VERSION_CONFIG[args.lcb_version]
+            print(f"Using LCB version: {args.lcb_version}, config: {version_config}")
+            lcb_dataset = load_code_generation_dataset(
+                release_version=version_config["release_version"],
+                start_date=version_config["start_date"],
+                end_date=version_config["end_date"]
+            )
+            eval_samples = [instance.get_evaluation_sample() for instance in lcb_dataset]
+            unmatched_questions = []
+            for i in range(len(lcb_dataset)):
+                found = False
+                for prompt in prompt2responses:
+                    if lcb_dataset[i].question_content in prompt:
+                        generations.append(prompt2responses[prompt])
+                        matched_count += 1
+                        found = True
+                        break
+                if not found:
+                    unmatched_questions.append(lcb_dataset[i].question_title)
+            print(f"Matched {matched_count}/{len(lcb_dataset)} questions")
+            if unmatched_questions:
+                print(f"Unmatched questions: {unmatched_questions[:5]}...")
+
+        if len(generations) == 0:
+            raise RuntimeError("No matched benchmark samples found for this parquet file.")
 
         for responses in generations:
             assert len(responses) == len(generations[0]), (len(responses), len(generations[0]))

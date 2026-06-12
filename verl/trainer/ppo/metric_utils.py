@@ -17,7 +17,7 @@ Metrics related to the PPO trainer.
 
 from collections import defaultdict
 from functools import partial
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -77,7 +77,45 @@ def _compute_response_info(batch: DataProto) -> Dict[str, Any]:
     )
 
 
-def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str, Any]:
+def _compute_sequence_mean(token_values: torch.Tensor, response_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute per-sequence masked mean and valid-sequence mask over response tokens."""
+    response_mask_float = response_mask.float()
+    count_raw = response_mask_float.sum(dim=-1)
+    count = count_raw + 1e-8
+    seq_mean = (token_values * response_mask_float).sum(dim=-1) / count
+    valid_seq_mask = count_raw > 0
+    return seq_mean, valid_seq_mask
+
+
+def _group_std_mean(seq_scores: np.ndarray, uids: np.ndarray) -> float:
+    """Mean of per-prompt std values over sequence scores."""
+    if len(seq_scores) == 0 or len(uids) == 0:
+        return 0.0
+
+    uid2scores = defaultdict(list)
+    for uid, score in zip(uids, seq_scores):
+        uid2scores[uid].append(float(score))
+
+    # Align with training-time normalization in core_algos:
+    # - singleton groups use std=1.0
+    # - multi-sample groups use sample std (ddof=1)
+    group_stds = []
+    for scores in uid2scores.values():
+        if len(scores) <= 1:
+            group_stds.append(1.0)
+        else:
+            group_stds.append(float(np.std(scores, ddof=1)))
+    return float(np.mean(group_stds)) if group_stds else 0.0
+
+
+def _safe_np_mean_std(values: np.ndarray) -> tuple[float, float]:
+    """Return (mean, std) with safe fallback for empty arrays."""
+    if values.size == 0:
+        return 0.0, 0.0
+    return float(np.mean(values)), float(np.std(values))
+
+
+def compute_data_metrics(batch: DataProto, use_critic: bool = True, adv_estimator: Optional[str] = None) -> Dict[str, Any]:
     """
     Computes various metrics from a batch of data for PPO training.
 
@@ -119,12 +157,103 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
 
     valid_adv = torch.masked_select(advantages, response_mask)
     valid_returns = torch.masked_select(returns, response_mask)
+    # Use training response_mask when available (e.g., intuitor_selective modifies it)
+    training_response_mask = batch.batch.get("response_mask", response_mask.float()).bool()
+    valid_adv_training_mask = torch.masked_select(advantages, training_response_mask)
 
     if use_critic:
         values = batch.batch["values"]
         valid_values = torch.masked_select(values, response_mask)
         return_diff_var = torch.var(valid_returns - valid_values)
         return_var = torch.var(valid_returns)
+
+    # ===== Unified sequence-level monitoring metrics =====
+    monitor_metrics = {}
+    uids = batch.non_tensor_batch.get("uid", None)
+
+    seq_self_certainty = None
+    if "self_certaintys" in batch.batch:
+        seq_self_certainty, seq_self_certainty_valid_mask = _compute_sequence_mean(batch.batch["self_certaintys"], training_response_mask)
+        seq_self_certainty_np = seq_self_certainty[seq_self_certainty_valid_mask].detach().cpu().numpy()
+        seq_mean, seq_std = _safe_np_mean_std(seq_self_certainty_np)
+        monitor_metrics.update({"monitor/seq_self_certainty_mean": seq_mean, "monitor/seq_self_certainty_std": seq_std})
+        if uids is not None:
+            valid_uids = np.asarray(uids)[seq_self_certainty_valid_mask.detach().cpu().numpy()]
+            monitor_metrics["monitor/prompt_group_self_certainty_std_mean"] = _group_std_mean(seq_self_certainty_np, valid_uids)
+
+    seq_token_entropy = None
+    if "entropys" in batch.batch:
+        seq_token_entropy, seq_token_entropy_valid_mask = _compute_sequence_mean(batch.batch["entropys"], training_response_mask)
+        seq_token_entropy_np = seq_token_entropy[seq_token_entropy_valid_mask].detach().cpu().numpy()
+        seq_mean, seq_std = _safe_np_mean_std(seq_token_entropy_np)
+        monitor_metrics.update({"monitor/seq_token_entropy_mean": seq_mean, "monitor/seq_token_entropy_std": seq_std})
+        if uids is not None:
+            valid_uids = np.asarray(uids)[seq_token_entropy_valid_mask.detach().cpu().numpy()]
+            monitor_metrics["monitor/prompt_group_token_entropy_std_mean"] = _group_std_mean(seq_token_entropy_np, valid_uids)
+
+    seq_trajectory_score = None
+    if "old_log_probs" in batch.batch:
+        # Score aligned with training formula for trajectory_entropy estimator: mean(log_prob)
+        seq_trajectory_score, seq_trajectory_valid_mask = _compute_sequence_mean(batch.batch["old_log_probs"], training_response_mask)
+        seq_trajectory_np = seq_trajectory_score[seq_trajectory_valid_mask].detach().cpu().numpy()
+        seq_mean, seq_std = _safe_np_mean_std(seq_trajectory_np)
+        monitor_metrics.update({"monitor/seq_trajectory_score_mean": seq_mean, "monitor/seq_trajectory_score_std": seq_std})
+        if uids is not None:
+            valid_uids = np.asarray(uids)[seq_trajectory_valid_mask.detach().cpu().numpy()]
+            monitor_metrics["monitor/prompt_group_trajectory_score_std_mean"] = _group_std_mean(seq_trajectory_np, valid_uids)
+
+    seq_prob_disparity = None
+    if "prob_disparitys" in batch.batch:
+        seq_prob_disparity, seq_prob_disparity_valid_mask = _compute_sequence_mean(batch.batch["prob_disparitys"], training_response_mask)
+        seq_prob_disparity_np = seq_prob_disparity[seq_prob_disparity_valid_mask].detach().cpu().numpy()
+        seq_mean, seq_std = _safe_np_mean_std(seq_prob_disparity_np)
+        monitor_metrics.update({"monitor/seq_prob_disparity_mean": seq_mean, "monitor/seq_prob_disparity_std": seq_std})
+        if uids is not None:
+            valid_uids = np.asarray(uids)[seq_prob_disparity_valid_mask.detach().cpu().numpy()]
+            monitor_metrics["monitor/prompt_group_prob_disparity_std_mean"] = _group_std_mean(seq_prob_disparity_np, valid_uids)
+
+    # ===== Current-estimator self-RL signal metrics =====
+    selfrl_metrics = {}
+    adv_estimator_normalized = adv_estimator.lower() if isinstance(adv_estimator, str) else None
+    seq_score_raw = None
+    seq_score_raw_valid_mask = None
+    if adv_estimator_normalized in {"intuitor", "intuitor_selective"} and seq_self_certainty is not None:
+        seq_score_raw = seq_self_certainty
+        seq_score_raw_valid_mask = seq_self_certainty_valid_mask
+    elif adv_estimator_normalized == "intuitor_entropy" and seq_token_entropy is not None:
+        seq_score_raw = -seq_token_entropy
+        seq_score_raw_valid_mask = seq_token_entropy_valid_mask
+    elif adv_estimator_normalized == "token_entropy" and seq_token_entropy is not None:
+        seq_score_raw = -seq_token_entropy
+        seq_score_raw_valid_mask = seq_token_entropy_valid_mask
+    elif adv_estimator_normalized == "trajectory_entropy" and seq_trajectory_score is not None:
+        seq_score_raw = seq_trajectory_score
+        seq_score_raw_valid_mask = seq_trajectory_valid_mask
+    elif adv_estimator_normalized == "prob_disparity" and seq_prob_disparity is not None:
+        seq_score_raw = seq_prob_disparity
+        seq_score_raw_valid_mask = seq_prob_disparity_valid_mask
+
+    if seq_score_raw is not None:
+        if seq_score_raw_valid_mask is None:
+            seq_score_raw_np = seq_score_raw.detach().cpu().numpy()
+            raw_uids = np.asarray(uids) if uids is not None else None
+        else:
+            seq_score_raw_np = seq_score_raw[seq_score_raw_valid_mask].detach().cpu().numpy()
+            raw_uids = np.asarray(uids)[seq_score_raw_valid_mask.detach().cpu().numpy()] if uids is not None else None
+        seq_mean, seq_std = _safe_np_mean_std(seq_score_raw_np)
+        selfrl_metrics.update({"selfrl/seq_score_raw_mean": seq_mean, "selfrl/seq_score_raw_std": seq_std})
+        if uids is not None:
+            selfrl_metrics["selfrl/prompt_group_std_mean"] = _group_std_mean(seq_score_raw_np, raw_uids)
+
+    # Sequence-level normalized score and token-level advantage strength
+    seq_score_norm, seq_score_norm_valid_mask = _compute_sequence_mean(advantages, training_response_mask)
+    seq_score_norm_np = seq_score_norm[seq_score_norm_valid_mask].detach().cpu().numpy()
+    if valid_adv_training_mask.numel() == 0:
+        adv_token_mean_abs = 0.0
+    else:
+        adv_token_mean_abs = torch.mean(torch.abs(valid_adv_training_mask)).detach().item()
+    seq_mean, seq_std = _safe_np_mean_std(seq_score_norm_np)
+    selfrl_metrics.update({"selfrl/seq_score_norm_mean": seq_mean, "selfrl/seq_score_norm_std": seq_std, "selfrl/adv_token_mean_abs": adv_token_mean_abs})
 
     metrics = {
         # score
@@ -194,6 +323,25 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
                 "intuitor_entropy/high_certainty_mean": np.mean(batch.non_tensor_batch["intuitor_entropy_certainty_scores"][batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"]]) if batch.non_tensor_batch["intuitor_entropy_high_certainty_mask"].sum() > 0 else 0.0,
             }
             if "intuitor_entropy_batch_mean_certainty" in batch.non_tensor_batch
+            else {}
+        ),
+        # short length penalty metrics
+        **(
+            {
+                "short_len_penalty/mean": float(np.mean(batch.non_tensor_batch["short_len_penalty_values"])),
+                "short_len_penalty/min": float(np.min(batch.non_tensor_batch["short_len_penalty_values"])),
+                "short_len_penalty/max": float(np.max(batch.non_tensor_batch["short_len_penalty_values"])),
+                "short_len_penalty/nonzero_ratio": float(np.mean(batch.non_tensor_batch["short_len_penalty_values"] < 0)),
+                "short_len_penalty/short_ratio": float(np.mean(batch.non_tensor_batch["short_len_short_mask"])),
+                "short_len_penalty/short_response_length_mean": float(
+                    np.mean(batch.non_tensor_batch["short_len_response_lengths"][batch.non_tensor_batch["short_len_short_mask"]])
+                )
+                if np.any(batch.non_tensor_batch["short_len_short_mask"])
+                else 0.0,
+                "short_len_penalty/min_len": float(batch.non_tensor_batch["short_len_penalty_min_len"][0]),
+                "short_len_penalty/alpha": float(batch.non_tensor_batch["short_len_penalty_alpha"][0]),
+            }
+            if "short_len_penalty_values" in batch.non_tensor_batch
             else {}
         ),
         # INTUITOR_SELECTIVE specific metrics
@@ -326,6 +474,8 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
         "prompt_length/max": torch.max(prompt_length).detach().item(),
         "prompt_length/min": torch.min(prompt_length).detach().item(),
         "prompt_length/clip_ratio": torch.mean(torch.eq(prompt_length, max_prompt_length).float()).detach().item(),
+        **monitor_metrics,
+        **selfrl_metrics,
     }
 
     pos_batch = batch[sequence_score > 0]

@@ -1,27 +1,37 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
+RAY_TMPDIR="/data_storage/wyj/r/${HOSTNAME:0:6}_$(date +%m%d%H%M)_$((RANDOM%1000))"
+mkdir -p "${RAY_TMPDIR}"
+export RAY_TMPDIR
 
 # 导入环境变量
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
     echo -e "✅ Loaded environment variables from .env$"
-    echo -e "🔑 WANDB_API_KEY: ${WANDB_API_KEY:0:8}...$"
-    echo -e "🔑 HF_TOKEN: ${HF_TOKEN:0:8}...$"
+    if [ -n "${WANDB_API_KEY:-}" ]; then
+        echo -e "🔑 WANDB_API_KEY: ${WANDB_API_KEY:0:8}...$"
+    else
+        echo -e "⚠️  WANDB_API_KEY not set in .env$"
+    fi
+    if [ -n "${HF_TOKEN:-}" ]; then
+        echo -e "🔑 HF_TOKEN: ${HF_TOKEN:0:8}...$"
+    else
+        echo -e "ℹ️  HF_TOKEN not set in .env (optional if model already cached)$"
+    fi
 else
     echo -e "⚠️  Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
 fi
 
-
 nnodes=1
 
-project_name='ArcherCodeR'
-exp_name='Unified-ProbDisparity-Qwen2.5-1.5B-2k-8k-batch64-no-kl'
+project_name='self-rl-jxl'
+exp_name='Unified-Intuitor-Qwen2.5-1.5B-2k-8k-batch64-no-kl-test-extreward1-save1'
 if [ -n "${EXP_SUFFIX:-}" ]; then
     exp_name="${exp_name}-${EXP_SUFFIX}"
 fi
 
-adv_estimator=prob_disparity
+adv_estimator=intuitor
 
 # kl config - NO KL LOSS
 use_kl_in_reward=False
@@ -76,21 +86,22 @@ actor_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 infer_ppo_max_token_len=$((max_prompt_length + v_max_response_length))
 offload=False
 
-echo "🚀 PROBABILITY DISPARITY CONFIGURATION (NO KL LOSS - SIMPLE RAY):"
+echo "🚀 INTUITOR TEST CONFIG (external reward interval + checkpoint):"
 echo "🤖 Model: ${MODEL_PATH}"
 echo "📏 Max prompt length: ${max_prompt_length}"
 echo "📏 Max response length: ${max_response_length}"
 echo "📦 Batch size: ${train_prompt_bsz}"
 echo "🔢 Responses per prompt: ${n_resp_per_prompt}"
 echo "⚡ Tensor parallel: ${gen_tp}"
-echo "🎯 Algorithm: Probability Disparity (top-1 vs top-2 gap)"
-echo "🎲 Validation sampling: n=${v_n}, do_sample=true, temperature=${v_temperature}"
+echo "🎯 Algorithm: Intuitor (self-certainty + livecodebench validation)"
+echo "🧪 External reward interval: 1 (compute every step)"
+echo "💾 Checkpoint save_freq: 1 (save every step)"
 echo "❌ KL Loss: DISABLED"
 
 mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
-/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
+/data_storage/wyj/systems/envs/archer/bin/python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=${adv_estimator} \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
@@ -132,7 +143,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.rollout.top_p=${top_p} \
     actor_rollout_ref.rollout.top_k="${top_k}" \
     actor_rollout_ref.rollout.max_model_len=${actor_ppo_max_token_len} \
-    actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + v_max_response_length)) \
+    actor_rollout_ref.rollout.max_num_batched_tokens=10240 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.val_kwargs.n=${v_n} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=true \
@@ -152,12 +163,13 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.save_freq=10 \
+    trainer.save_freq=1 \
     trainer.test_freq=10 \
-    trainer.total_epochs=2 \
+    trainer.total_epochs=1 \
     trainer.resume_mode=auto \
     trainer.default_local_dir="${CKPTS_DIR}" \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
-    +trainer.max_actor_ckpt_to_keep=20 \
-    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_prob_disparity.log
-
+    +trainer.max_actor_ckpt_to_keep=60 \
+    +trainer.max_critic_ckpt_to_keep=60 \
+    +trainer.selfrl_external_reward_interval=1 \
+    trainer.balance_batch=False $@ 2>&1 | tee ${CKPTS_DIR}/${project_name}_${exp_name}_intuitor.log

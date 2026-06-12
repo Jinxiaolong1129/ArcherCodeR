@@ -226,6 +226,38 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
     if "response_mask" not in data.batch.keys():
         data.batch["response_mask"] = compute_response_mask(data)
     # prepare response group
+    short_len_cfg = config.get("short_length_penalty", {}) if config is not None else {}
+    _short_len_enable_raw = short_len_cfg.get("enable", False)
+    if isinstance(_short_len_enable_raw, str):
+        short_len_enable = _short_len_enable_raw.lower() in {"1", "true", "yes", "on"}
+    else:
+        short_len_enable = bool(_short_len_enable_raw)
+    short_len_min_len = float(short_len_cfg.get("min_len", 0.0))
+    short_len_alpha = float(short_len_cfg.get("alpha", 0.0))
+
+    def _apply_short_length_penalty(seq_scores: torch.Tensor, response_mask: torch.Tensor):
+        """Apply a linear penalty when response length is shorter than min_len."""
+        if not short_len_enable or short_len_alpha <= 0.0 or short_len_min_len <= 0.0:
+            return seq_scores, None
+
+        lengths = response_mask.float().sum(dim=-1)
+        # penalty = -alpha * relu(min_len - L) / min_len
+        penalties = -short_len_alpha * torch.relu(short_len_min_len - lengths) / short_len_min_len
+        penalized_scores = seq_scores + penalties
+        return penalized_scores, penalties
+
+    def _record_short_length_penalty(penalties: Optional[torch.Tensor], response_mask: torch.Tensor):
+        """Store short-length penalty stats in non_tensor_batch for metric logging."""
+        if penalties is None:
+            return
+        lengths = response_mask.float().sum(dim=-1)
+        short_mask = lengths < short_len_min_len
+        data.non_tensor_batch["short_len_penalty_values"] = penalties.detach().cpu().numpy()
+        data.non_tensor_batch["short_len_response_lengths"] = lengths.detach().cpu().numpy()
+        data.non_tensor_batch["short_len_short_mask"] = short_mask.detach().cpu().numpy()
+        data.non_tensor_batch["short_len_penalty_min_len"] = np.full(lengths.shape[0], short_len_min_len, dtype=np.float32)
+        data.non_tensor_batch["short_len_penalty_alpha"] = np.full(lengths.shape[0], short_len_alpha, dtype=np.float32)
+
     if adv_estimator == AdvantageEstimator.GAE:
         # Compute advantages and returns using Generalized Advantage Estimation (GAE)
         advantages, returns = core_algos.compute_gae_advantage_return(
@@ -272,6 +304,8 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         sum_certainty = masked_certainty.sum(dim=-1)             # [B]
         count = response_mask.sum(dim=-1) + 1e-8                 # avoid divide-by-zero; [B]
         sentence_wise_mean = sum_certainty / count               # [B]
+        penalized_scores, penalties = _apply_short_length_penalty(sentence_wise_mean, response_mask)
+        _record_short_length_penalty(penalties, response_mask)
         
         # Calculate batch statistics for logging
         batch_size = self_certaintys.shape[0]
@@ -291,13 +325,17 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         
         # Broadcast sentence-level scores back to token-level shape for compatibility
         # Use expand_as instead of repeat to avoid memory copy issues
-        token_level_rewards = sentence_wise_mean.unsqueeze(1).expand_as(self_certaintys)  # [B, T]
+        token_level_rewards = penalized_scores.unsqueeze(1).expand_as(self_certaintys)  # [B, T]
 
         print('-------------------------------- This is Intuitor --------------------------------')
         print(f"data.batch['self_certaintys'].shape: {data.batch['self_certaintys'].shape}")
         print(f"Batch mean certainty (threshold): {batch_mean_certainty:.4f}")
         print(f"Batch median certainty: {batch_median_certainty:.4f}")
         print(f"Certainty range: [{sentence_wise_mean.min().item():.4f}, {sentence_wise_mean.max().item():.4f}]")
+        if penalties is not None:
+            print(f"Short length penalty enabled: min_len={short_len_min_len:.0f}, alpha={short_len_alpha:.4f}")
+            print(f"Penalty range: [{penalties.min().item():.4f}, {penalties.max().item():.4f}]")
+            print(f"Penalized score range: [{penalized_scores.min().item():.4f}, {penalized_scores.max().item():.4f}]")
         print(f"Low certainty sequences (< mean): {low_certainty_mask.sum().item()}/{len(sentence_wise_mean)} ({low_certainty_mask.float().mean().item()*100:.1f}%)")
         print(f"High certainty sequences (>= mean): {high_certainty_mask.sum().item()}/{len(sentence_wise_mean)} ({high_certainty_mask.float().mean().item()*100:.1f}%)")
         print(f"Note: All sequences participate in training (unlike INTUITOR_SELECTIVE)")
@@ -323,6 +361,8 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         sum_certainty = masked_certainty.sum(dim=-1)             # [B]
         count = response_mask.sum(dim=-1) + 1e-8                 # avoid divide-by-zero; [B]
         sentence_wise_mean = sum_certainty / count               # [B]
+        penalized_scores, penalties = _apply_short_length_penalty(sentence_wise_mean, response_mask)
+        _record_short_length_penalty(penalties, response_mask)
         
         # Calculate batch statistics for logging
         batch_size = entropys.shape[0]
@@ -341,13 +381,17 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         data.non_tensor_batch["intuitor_entropy_high_certainty_mask"] = high_certainty_mask.cpu().numpy()
         
         # Broadcast sentence-level scores back to token-level shape for compatibility
-        token_level_rewards = sentence_wise_mean.unsqueeze(1).expand_as(entropys)  # [B, T]
+        token_level_rewards = penalized_scores.unsqueeze(1).expand_as(entropys)  # [B, T]
 
         print('-------------------------------- This is Intuitor Entropy --------------------------------')
         print(f"data.batch['entropys'].shape: {data.batch['entropys'].shape}")
         print(f"Batch mean certainty (neg entropy, threshold): {batch_mean_certainty:.4f}")
         print(f"Batch median certainty (neg entropy): {batch_median_certainty:.4f}")
         print(f"Certainty range: [{sentence_wise_mean.min().item():.4f}, {sentence_wise_mean.max().item():.4f}]")
+        if penalties is not None:
+            print(f"Short length penalty enabled: min_len={short_len_min_len:.0f}, alpha={short_len_alpha:.4f}")
+            print(f"Penalty range: [{penalties.min().item():.4f}, {penalties.max().item():.4f}]")
+            print(f"Penalized score range: [{penalized_scores.min().item():.4f}, {penalized_scores.max().item():.4f}]")
         print(f"Low certainty sequences (< mean): {low_certainty_mask.sum().item()}/{len(sentence_wise_mean)} ({low_certainty_mask.float().mean().item()*100:.1f}%)")
         print(f"High certainty sequences (>= mean): {high_certainty_mask.sum().item()}/{len(sentence_wise_mean)} ({high_certainty_mask.float().mean().item()*100:.1f}%)")
         print(f"Note: All sequences participate in training (unlike INTUITOR_SELECTIVE)")
@@ -654,12 +698,30 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         print(f"  ├─ response_mask.shape: {response_mask.shape}")
         print(f"  └─ Number of unique prompts: {len(set(data.non_tensor_batch['uid']))}")
         
-        advantages, returns = core_algos.compute_trajectory_entropy_advantage(
-            old_log_probs=old_log_probs,
-            response_mask=response_mask,
-            index=data.non_tensor_batch["uid"],
-            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-        )
+        if short_len_enable and short_len_alpha > 0.0 and short_len_min_len > 0.0:
+            response_mask_float = response_mask.float()
+            sum_log_probs = (old_log_probs * response_mask_float).sum(dim=-1)
+            count = response_mask_float.sum(dim=-1) + 1e-8
+            seq_scores = sum_log_probs / count
+            penalized_scores, penalties = _apply_short_length_penalty(seq_scores, response_mask_float)
+            _record_short_length_penalty(penalties, response_mask_float)
+            token_level_rewards = penalized_scores.unsqueeze(1) * response_mask_float
+            print(f"Short length penalty enabled: min_len={short_len_min_len:.0f}, alpha={short_len_alpha:.4f}")
+            print(f"Penalty range: [{penalties.min().item():.4f}, {penalties.max().item():.4f}]")
+            print(f"Penalized score range: [{penalized_scores.min().item():.4f}, {penalized_scores.max().item():.4f}]")
+            advantages, returns = core_algos.compute_grpo_outcome_advantage(
+                token_level_rewards=token_level_rewards,
+                response_mask=response_mask_float,
+                index=data.non_tensor_batch["uid"],
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            )
+        else:
+            advantages, returns = core_algos.compute_trajectory_entropy_advantage(
+                old_log_probs=old_log_probs,
+                response_mask=response_mask,
+                index=data.non_tensor_batch["uid"],
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            )
         
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -677,12 +739,30 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         print(f"  ├─ response_mask.shape: {response_mask.shape}")
         print(f"  └─ Number of unique prompts: {len(set(data.non_tensor_batch['uid']))}")
         
-        advantages, returns = core_algos.compute_token_entropy_advantage(
-            entropys=entropys,
-            response_mask=response_mask,
-            index=data.non_tensor_batch["uid"],
-            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-        )
+        if short_len_enable and short_len_alpha > 0.0 and short_len_min_len > 0.0:
+            response_mask_float = response_mask.float()
+            sum_entropy = (entropys * response_mask_float).sum(dim=-1)
+            count = response_mask_float.sum(dim=-1) + 1e-8
+            seq_scores = -sum_entropy / count
+            penalized_scores, penalties = _apply_short_length_penalty(seq_scores, response_mask_float)
+            _record_short_length_penalty(penalties, response_mask_float)
+            token_level_rewards = penalized_scores.unsqueeze(1) * response_mask_float
+            print(f"Short length penalty enabled: min_len={short_len_min_len:.0f}, alpha={short_len_alpha:.4f}")
+            print(f"Penalty range: [{penalties.min().item():.4f}, {penalties.max().item():.4f}]")
+            print(f"Penalized score range: [{penalized_scores.min().item():.4f}, {penalized_scores.max().item():.4f}]")
+            advantages, returns = core_algos.compute_grpo_outcome_advantage(
+                token_level_rewards=token_level_rewards,
+                response_mask=response_mask_float,
+                index=data.non_tensor_batch["uid"],
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            )
+        else:
+            advantages, returns = core_algos.compute_token_entropy_advantage(
+                entropys=entropys,
+                response_mask=response_mask,
+                index=data.non_tensor_batch["uid"],
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            )
         
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -700,12 +780,30 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         print(f"  ├─ response_mask.shape: {response_mask.shape}")
         print(f"  └─ Number of unique prompts: {len(set(data.non_tensor_batch['uid']))}")
         
-        advantages, returns = core_algos.compute_prob_disparity_advantage(
-            prob_disparitys=prob_disparitys,
-            response_mask=response_mask,
-            index=data.non_tensor_batch["uid"],
-            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-        )
+        if short_len_enable and short_len_alpha > 0.0 and short_len_min_len > 0.0:
+            response_mask_float = response_mask.float()
+            sum_disparity = (prob_disparitys * response_mask_float).sum(dim=-1)
+            count = response_mask_float.sum(dim=-1) + 1e-8
+            seq_scores = sum_disparity / count
+            penalized_scores, penalties = _apply_short_length_penalty(seq_scores, response_mask_float)
+            _record_short_length_penalty(penalties, response_mask_float)
+            token_level_rewards = penalized_scores.unsqueeze(1) * response_mask_float
+            print(f"Short length penalty enabled: min_len={short_len_min_len:.0f}, alpha={short_len_alpha:.4f}")
+            print(f"Penalty range: [{penalties.min().item():.4f}, {penalties.max().item():.4f}]")
+            print(f"Penalized score range: [{penalized_scores.min().item():.4f}, {penalized_scores.max().item():.4f}]")
+            advantages, returns = core_algos.compute_grpo_outcome_advantage(
+                token_level_rewards=token_level_rewards,
+                response_mask=response_mask_float,
+                index=data.non_tensor_batch["uid"],
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            )
+        else:
+            advantages, returns = core_algos.compute_prob_disparity_advantage(
+                prob_disparitys=prob_disparitys,
+                response_mask=response_mask,
+                index=data.non_tensor_batch["uid"],
+                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            )
         
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -1040,6 +1138,59 @@ class RayPPOTrainer:
         # Log to each configured logger
         self.validation_generations_tracklogger.log(self.config.trainer.logger, samples, self.global_steps)
 
+    def _should_log_external_reward(self) -> bool:
+        """Whether to compute log-only external reward metrics for self-RL methods."""
+        selfrl_estimators = {
+            AdvantageEstimator.INTUITOR,
+            AdvantageEstimator.INTUITOR_ENTROPY,
+            AdvantageEstimator.TOKEN_ENTROPY,
+            AdvantageEstimator.TRAJECTORY_ENTROPY,
+            AdvantageEstimator.PROB_DISPARITY,
+        }
+        if self.config.algorithm.adv_estimator not in selfrl_estimators:
+            return False
+        if self.val_reward_fn is None:
+            return False
+
+        interval = int(self.config.trainer.get("selfrl_external_reward_interval", 5))
+        if interval <= 0:
+            return False
+        return self.global_steps % interval == 0
+
+    def _compute_external_reward_log_metrics(self, batch: DataProto) -> dict[str, float]:
+        """Compute external reward metrics for logging only (no training impact)."""
+        result = self.val_reward_fn(batch, return_dict=True)
+        reward_tensor = result["reward_tensor"]
+        seq_reward = reward_tensor.sum(dim=-1).detach().float().cpu().numpy()
+
+        metrics: dict[str, float] = {}
+        if seq_reward.size == 0:
+            return metrics
+
+        metrics["external_reward/mean"] = float(np.mean(seq_reward))
+        metrics["external_reward/max"] = float(np.max(seq_reward))
+        metrics["external_reward/min"] = float(np.min(seq_reward))
+        metrics["external_reward/std"] = float(np.std(seq_reward))
+        metrics["external_reward/positive_ratio"] = float(np.mean(seq_reward > 0))
+        metrics["external_reward/num_samples"] = float(seq_reward.size)
+
+        data_sources = batch.non_tensor_batch.get("data_source", None)
+        if data_sources is not None:
+            data_sources = np.asarray(data_sources, dtype=object)
+            if data_sources.shape[0] == seq_reward.shape[0]:
+                unique_data_sources = sorted(set(str(ds) for ds in data_sources.tolist()))
+                for data_source in unique_data_sources:
+                    mask = data_sources == data_source
+                    if not np.any(mask):
+                        continue
+                    safe_name = data_source.replace("/", "_").replace(" ", "_")
+                    ds_rewards = seq_reward[mask]
+                    metrics[f"external_reward/by_data_source/{safe_name}/mean"] = float(np.mean(ds_rewards))
+                    metrics[f"external_reward/by_data_source/{safe_name}/positive_ratio"] = float(np.mean(ds_rewards > 0))
+                    metrics[f"external_reward/by_data_source/{safe_name}/num_samples"] = float(ds_rewards.size)
+
+        return metrics
+
     def _validate(self):
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
@@ -1373,12 +1524,20 @@ class RayPPOTrainer:
             self.critic_wg.load_checkpoint(critic_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
             print(f"✅ Critic loaded from {critic_path}")
             
-        # load dataloader,
-        # TODO: from remote not implemented yet
+        # load dataloader state — skip for cross-experiment resume since the
+        # source experiment's dataloader position is irrelevant to the new run
+        # and may cause the dataloader to appear exhausted (0 batches).
+        is_cross_experiment = (
+            self.config.trainer.resume_mode == "resume_path"
+            and self.config.trainer.experiment_name not in global_step_folder
+        )
         dataloader_local_path = os.path.join(global_step_folder, "data.pt")
-        if os.path.exists(dataloader_local_path):
+        if is_cross_experiment:
+            print(f"⚠️ Cross-experiment resume detected, skipping dataloader state from {dataloader_local_path}")
+        elif os.path.exists(dataloader_local_path):
             dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
             self.train_dataloader.load_state_dict(dataloader_state_dict)
+            print(f"✅ Loaded dataloader state from {dataloader_local_path}")
         else:
             print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
@@ -1655,6 +1814,16 @@ class RayPPOTrainer:
                     reward_total_time = time.time() - reward_start_time
                     logger.info(f"   ✅ Reward computation completed in {reward_total_time:.2f}s")
 
+                    # Log-only external reward for self-RL algorithms (does not affect optimization).
+                    if self._should_log_external_reward():
+                        with _timer("external_reward_log_only", timing_raw):
+                            try:
+                                ext_reward_metrics = self._compute_external_reward_log_metrics(batch)
+                                metrics.update(ext_reward_metrics)
+                            except Exception as e:
+                                logger.warning(f"   ⚠️  External reward logging failed at step {self.global_steps}: {e}")
+                                metrics["external_reward/log_error"] = 1.0
+
                     # === 模型更新阶段 ===
                     update_start_time = time.time()
                     logger.info(f"   🔄 Starting model update phase...")
@@ -1866,7 +2035,13 @@ class RayPPOTrainer:
                     }
                 )
                 # collect metrics
-                metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
+                metrics.update(
+                    compute_data_metrics(
+                        batch=batch,
+                        use_critic=self.use_critic,
+                        adv_estimator=self.config.algorithm.adv_estimator,
+                    )
+                )
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()

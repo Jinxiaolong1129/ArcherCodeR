@@ -50,5 +50,3 @@ download_from_hf(
     "test/livecodebench_v5.json",
     "./data/test/livecodebench_v5.json"
 )
-
-steoa

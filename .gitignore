@@ -233,3 +233,25 @@ archer2.0/Archer2.0/
 # 测试文件
 test_wandb.sh
 test.json
+bydance.txt
+# Ray 临时文件（注意是 .ray_tmp 不是 ray_temp）
+.ray_tmp/
+
+# 备份目录（含嵌套 git）
+Archer_eval-back/
+
+# 临时模型配置
+Archer_eval/tmp/
+
+# LiveCodeBench wandb 日志
+Archer_eval/LiveCodeBench/wandb/
+
+# WandB 符号链接
+wandb/
+
+# TTRL 外部模块
+TTRL/
+
+# 同步脚本（含服务器信息）
+rewards/scripts/sync_to_*.sh
+rewards/scripts/verify_sync*.sh

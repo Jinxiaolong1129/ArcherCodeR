@@ -19,7 +19,7 @@ Strictly unified checkpoint/eval settings:
 - `trainer.save_freq=10`
 - `trainer.test_freq=10`
 - `trainer.resume_mode=auto`
-- `+trainer.max_actor_ckpt_to_keep=20`
+- `+trainer.max_actor_ckpt_to_keep=60`
 
 Parameter override support in each `*-unified.sh`:
 - `EXP_SUFFIX`: append suffix to `exp_name`

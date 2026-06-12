@@ -1,19 +1,32 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
+RAY_TMPDIR="/data_storage/wyj/r/${HOSTNAME:0:6}_$(date +%m%d%H%M)_$((RANDOM%1000))"
+mkdir -p "${RAY_TMPDIR}"
+export RAY_TMPDIR
+
+
 # 导入环境变量
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
     echo -e "✅ Loaded environment variables from .env$"
-    echo -e "🔑 WANDB_API_KEY: ${WANDB_API_KEY:0:8}...$"
-    echo -e "🔑 HF_TOKEN: ${HF_TOKEN:0:8}...$"
+    if [ -n "${WANDB_API_KEY:-}" ]; then
+        echo -e "🔑 WANDB_API_KEY: ${WANDB_API_KEY:0:8}...$"
+    else
+        echo -e "⚠️  WANDB_API_KEY not set in .env$"
+    fi
+    if [ -n "${HF_TOKEN:-}" ]; then
+        echo -e "🔑 HF_TOKEN: ${HF_TOKEN:0:8}...$"
+    else
+        echo -e "ℹ️  HF_TOKEN not set in .env (optional if model already cached)$"
+    fi
 else
     echo -e "⚠️  Warning: .env file not found. Please create .env file with WANDB_API_KEY and HF_TOKEN"
 fi
 
 nnodes=1
 
-project_name='ArcherCodeR'
+project_name='self-rl-jxl'
 exp_name='Unified-Pure-GRPO-Qwen2.5-1.5B-2K-8K-16resp-no-kl'
 if [ -n "${EXP_SUFFIX:-}" ]; then
     exp_name="${exp_name}-${EXP_SUFFIX}"
@@ -37,7 +50,15 @@ fi
 # clip - standard PPO clipping
 clip_ratio_low=0.2
 clip_ratio_high=0.2
+clip_ratio_c=3.0
 loss_agg_mode=token-mean
+ppo_epochs=1
+if [ -n "${CLIP_RATIO_C_OVERRIDE:-}" ]; then
+    clip_ratio_c="${CLIP_RATIO_C_OVERRIDE}"
+fi
+if [ -n "${PPO_EPOCHS_OVERRIDE:-}" ]; then
+    ppo_epochs="${PPO_EPOCHS_OVERRIDE}"
+fi
 
 # Sequence lengths
 max_prompt_length=$((1024 * 2))  # 2K
@@ -74,6 +95,10 @@ fi
 if [ -n "${TEMP_OVERRIDE:-}" ]; then
     temperature="${TEMP_OVERRIDE}"
 fi
+save_freq=10
+if [ -n "${SAVE_FREQ_OVERRIDE:-}" ]; then
+    save_freq="${SAVE_FREQ_OVERRIDE}"
+fi
 
 # Performance settings
 sp_size=1
@@ -104,7 +129,7 @@ mkdir -p "${CKPTS_DIR}"
 mkdir -p "${CKPTS_DIR}/eval"
 
 # 使用标准的 verl.trainer.main_ppo 入口点进行纯GRPO训练
-/data/xuandong_zhao/anaconda3/envs/archer/bin/python -m verl.trainer.main_ppo \
+/data_storage/wyj/systems/envs/archer/bin/python -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -126,7 +151,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.actor.kl_loss_type=${kl_loss_type} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
-    actor_rollout_ref.actor.clip_ratio_c=3.0 \
+    actor_rollout_ref.actor.clip_ratio_c=${clip_ratio_c} \
     actor_rollout_ref.model.path="${MODEL_PATH}" \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
@@ -137,7 +162,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.actor.optim.warmup_style=constant \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
-    actor_rollout_ref.actor.ppo_epochs=1 \
+    actor_rollout_ref.actor.ppo_epochs=${ppo_epochs} \
     actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
     actor_rollout_ref.actor.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=${offload} \
@@ -154,7 +179,7 @@ mkdir -p "${CKPTS_DIR}/eval"
     actor_rollout_ref.rollout.gpu_memory_utilization=0.75 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
-    actor_rollout_ref.rollout.max_num_batched_tokens=65536 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=10240 \
     actor_rollout_ref.rollout.max_model_len=$((max_prompt_length + v_max_response_length)) \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.top_p=${top_p} \
@@ -183,11 +208,11 @@ mkdir -p "${CKPTS_DIR}/eval"
     trainer.balance_batch=False \
     trainer.val_before_train=False \
     trainer.test_freq=10 \
-    trainer.save_freq=10 \
-    trainer.total_epochs=2 \
+    trainer.save_freq=${save_freq} \
+    trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
-    +trainer.max_actor_ckpt_to_keep=20 \
+    +trainer.max_actor_ckpt_to_keep=60 \
     +trainer.max_critic_ckpt_to_keep=60 \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
     +trainer.enable_overlong_filter=${use_overlong_filter} \

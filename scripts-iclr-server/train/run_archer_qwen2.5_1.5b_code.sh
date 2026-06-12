@@ -32,7 +32,7 @@ gen_prompt_bsz=$((train_prompt_bsz * 1))
 train_prompt_mini_bsz=32
 
 # Paths
-MODEL_PATH=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+MODEL_PATH=./models/DeepSeek-R1-Distill-Qwen-1.5B
 CKPTS_DIR=./output/${project_name}/${exp_name}
 data_dir=./data
 TRAIN_FILE=$data_dir/train/archercoder-1.5b-train.json
@@ -70,7 +70,7 @@ high_entropy_clip_ratio_high=0.5
 use_overlong_filter=False
 
 
-/home/ec2-user/miniconda3/envs/archer/bin/python -m dapo.main_dapo \
+python -m dapo.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -149,7 +149,7 @@ use_overlong_filter=False
     trainer.val_before_train=False \
     trainer.test_freq=-1 \
     trainer.save_freq=10 \
-    trainer.total_epochs=1 \
+    trainer.total_epochs=10 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     +trainer.validation_data_dir=${CKPTS_DIR}/eval \
