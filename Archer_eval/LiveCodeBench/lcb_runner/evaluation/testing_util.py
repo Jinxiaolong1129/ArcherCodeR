@@ -397,8 +397,9 @@ def run_test(sample, test=None, debug=False, timeout=6):
     signal.signal(signal.SIGALRM, timeout_handler)
 
     # Disable functionalities that can make destructive changes to the test.
-    # max memory is set to 4GB
-    reliability_guard()
+    # max memory is set to 4GB (per-execution RLIMIT_AS so a runaway solution
+    # raises MemoryError -> scored wrong, instead of OOM-killing the container)
+    reliability_guard(maximum_memory_bytes=4 * 1024 * 1024 * 1024)
 
     if debug:
         print(f"start = {datetime.now().time()}")

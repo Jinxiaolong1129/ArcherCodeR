@@ -28,6 +28,16 @@ def _intuitor_dummy_reward_fn(data_source: str, solution_str: str, ground_truth,
     return 0.0
 
 
+# Global random reward function (to avoid pickle issues; runs in ProcessPool workers).
+def _random_reward_fn(data_source: str, solution_str: str, ground_truth, extra_info=None, enable_llm=False, is_eval=False):
+    """Random-reward baseline (Spurious Rewards, arXiv:2506.10947): reward is INDEPENDENT of
+    output and ground-truth -> Bernoulli(RANDOM_REWARD_RATE). Used for TRAINING only; validation
+    keeps the real reward so the val curve still reflects true performance. No execution is run."""
+    import os, random
+    rate = float(os.environ.get("RANDOM_REWARD_RATE", "0.5"))
+    return 1.0 if random.random() < rate else 0.0
+
+
 def get_custom_reward_fn(config):
     import importlib.util
     import sys
@@ -106,7 +116,14 @@ def load_reward_manager(config, tokenizer, num_examine=0, for_validation=False, 
         "trajectory_entropy"
     ]
     
-    if hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator in intrinsic_reward_algos:
+    import os as _os
+    _random_rate = _os.environ.get("RANDOM_REWARD_RATE", "")
+    if _random_rate != "" and not for_validation:
+        # Random-reward baseline (Spurious Rewards): TRAINING reward ⟂ output/label (Bernoulli).
+        # Validation falls through to the real reward, so the val curve reflects true performance.
+        print(f"🎲 RANDOM REWARD training: reward ~Bernoulli({_random_rate}), independent of output (execution skipped)")
+        final_compute_score = _random_reward_fn
+    elif hasattr(config, 'algorithm') and hasattr(config.algorithm, 'adv_estimator') and config.algorithm.adv_estimator in intrinsic_reward_algos:
         algo_name = config.algorithm.adv_estimator
         
         if algo_name == "intuitor_selective":

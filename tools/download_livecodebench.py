@@ -20,7 +20,7 @@ def download_livecodebench_data(version_tag, save_path):
     
     try:
         # 加载数据集
-        dataset = load_dataset("livecodebench/code_generation_lite", version_tag=version_tag)
+        dataset = load_dataset("livecodebench/code_generation_lite", version_tag=version_tag, trust_remote_code=True)
         
         # 确保保存目录存在
         save_dir = os.path.dirname(save_path)
@@ -63,7 +63,7 @@ def show_dataset_info(version_tag):
     """显示数据集信息"""
     try:
         print(f"\n🔍 查看 {version_tag} 数据集信息...")
-        dataset = load_dataset("livecodebench/code_generation_lite", version_tag=version_tag)
+        dataset = load_dataset("livecodebench/code_generation_lite", version_tag=version_tag, trust_remote_code=True)
         
         print(f"📋 可用分割: {list(dataset.keys())}")
         

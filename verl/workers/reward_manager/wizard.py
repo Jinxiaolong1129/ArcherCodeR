@@ -147,7 +147,8 @@ class WizardRewardManager:
                     data_sources,
                     extra_info=extra_info,
                     enable_llm=False,
-                    is_eval=is_eval
+                    is_eval=is_eval,
+                    max_workers=160,  # opt A: container has cpu=184; was default 64
                 )
             assert len(scores) == len(sequences_str)
             print(f"        ✅ Parallel compute score completed in {time.time() - score_start_time:.2f}s")
