@@ -1,0 +1,82 @@
+protocolVersion: 2
+name: archer-grpo-4b-test-20260613-171008
+type: job
+jobRetryCount: 0
+jobType: others
+prerequisites:
+- type: dockerimage
+  uri: registry-tmp.zhilicon.com:5000/whatcanyousee/verl:ngc-cu124-vllm0.8.5-sglang0.4.6.post5-mcore0.12.1-te2.3-deepseekv3
+  name: docker_image0
+taskRoles:
+  taskrole:
+    instances: 1
+    completion:
+      minFailedInstances: 1
+    taskRetryCount: 0
+    dockerImage: docker_image0
+    extraContainerOptions:
+      shmMB: 131072
+      infiniband: true
+    resourcePerInstance:
+      gpu: 8
+      cpu: 184
+      memoryMB: 2048000
+    commands:
+    - '#!/bin/bash'
+    - set -xeuo pipefail
+    - '# ===== Qwen3-4B pure GRPO on verl0.4 (vllm0.8.5) — first bringup ====='
+    - env
+    - nvidia-smi
+    - '# ===== STAGE 1: apt/pip internal mirror ====='
+    - curl -fsSL http://10.100.197.13/user_config/bootstrap.sh | bash -s -- --all
+    - apt-get update && apt-get install -y iproute2 ceph-common kmod python3-dev || true
+    - '# ===== STAGE 2: mount cephfs (kernel mount; secret inlined) ====='
+    - mkdir -p /etc/ceph /mnt/cephfs
+    - printf '%s\n' 'AQCypQpqu7a+NRAAcyxOgw5qocHjBvavcgjEmA==' > /etc/ceph/xiaolong.jin.secret
+    - chmod 600 /etc/ceph/xiaolong.jin.secret
+    - export CEPHFS_MONITORS="10.100.65.50,10.100.65.51,10.100.160.70:/"
+    - if ! mountpoint -q /mnt/cephfs; then
+    - mount -t ceph "$CEPHFS_MONITORS" /mnt/cephfs -o name=xiaolong.jin,secretfile=/etc/ceph/xiaolong.jin.secret
+    - fi
+    - timeout 60 bash -c 'until mountpoint -q /mnt/cephfs; do sleep 1; done'
+    - test -d /mnt/cephfs/data/processing/xiaolong.jin && echo "cephfs OK"
+    - '# ===== STAGE 3: network env ====='
+    - export GLOO_SOCKET_IFNAME=$( (ip -o -4 addr show | awk "{print \$2}" | grep "^enp"; ip -o -4 addr show | awk "{print \$2}" | grep -v "^enp" | grep -v -E "^(lo|docker|veth|br-)" ) | head -n 1 )
+    - export NCCL_SOCKET_IFNAME=ib
+    - export NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_4,mlx5_5,mlx5_6,mlx5_7,mlx5_9
+    - '# ===== STAGE 4: install verl0.4 (repo verl04/) + reward deps not in base ====='
+    - export REPO_DIR=/mnt/cephfs/data/processing/xiaolong.jin/code/ArcherCodeR
+    - cd "$REPO_DIR/verl04"
+    - '# image already has verl + vllm0.8.5 baked; --no-deps just re-registers our verl0.4.1+wizard, preserving the working stack'
+    - pip install --no-build-isolation -e . --no-deps
+    - pip install math-verify latex2sympy2 pylatexenc antlr4-python3-runtime==4.9.3
+    - python -c "import verl, vllm; print('verl', verl.__version__, 'vllm', vllm.__version__)"
+    - '# ===== STAGE 5: launch Qwen3-4B pure GRPO ====='
+    - export RAY_TMPDIR=/root/ray_tmp && mkdir -p "$RAY_TMPDIR"
+    - ray stop --force 2>/dev/null || true
+    - '# ===== experiment: Qwen/Qwen3-4B (base/hybrid, thinking), compile path (enforce_eager=False) ====='
+    - export MODEL_PATH=/mnt/cephfs/data/processing/xiaolong.jin/models/Qwen3-4B
+    - export EXP_NAME=Pure-GRPO-Qwen3-4B-2K-8K-16resp-no-kl
+    - '# compile path: enforce_eager=False REQUIRES free_cache_engine=False; lower gpu_mem so resident vllm + FSDP both fit'
+    - export ENFORCE_EAGER=False
+    - export FREE_CACHE=False
+    - export GPU_MEM=0.5
+    - bash "$REPO_DIR/ltp/run_pure_grpo_4b_ltp.sh"
+    - echo "FINISHED grpo 4b bringup"
+    - sleep 30m
+defaults:
+  virtualCluster: h200pretraining2
+extras:
+  com.microsoft.pai.runtimeplugin:
+  - plugin: ssh
+    parameters:
+      jobssh: true
+  jobStatusChangeNotification:
+    running: true
+    succeeded: true
+    failed: true
+  hivedScheduler:
+    taskRoles:
+      taskrole:
+        skuNum: 8
+        skuType: h200

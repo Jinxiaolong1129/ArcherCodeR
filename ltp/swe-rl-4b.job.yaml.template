@@ -1,0 +1,79 @@
+protocolVersion: 2
+name: __NAME__
+type: job
+jobRetryCount: 0
+jobType: others
+prerequisites:
+- type: dockerimage
+  # 4B uses whatcanyousee (vllm0.8.5) — Qwen3 needs vllm>=0.8.5; jxldragon(0.7.3) cannot.
+  uri: registry-tmp.zhilicon.com:5000/whatcanyousee/verl:ngc-cu124-vllm0.8.5-sglang0.4.6.post5-mcore0.12.1-te2.3-deepseekv3
+  name: docker_image0
+taskRoles:
+  taskrole:
+    instances: 1
+    completion:
+      minFailedInstances: 1
+    taskRetryCount: 0
+    dockerImage: docker_image0
+    extraContainerOptions:
+      shmMB: 131072
+      infiniband: true
+    resourcePerInstance:
+      gpu: 8
+      cpu: 184
+      memoryMB: 2048000
+    commands:
+    - '#!/bin/bash'
+    - set -xeuo pipefail
+    - '# ===== 4B internal-signal fair-compare: __ADV__ on Qwen3-4B, SAME run_swe_rl_ltp.sh as 1.5B/7B ====='
+    - env
+    - nvidia-smi
+    - curl -fsSL http://10.100.197.13/user_config/bootstrap.sh | bash -s -- --all
+    - '# python3-dev: vllm0.8 torch.compile needs Python.h even with enforce_eager (safety net)'
+    - apt-get update && apt-get install -y iproute2 ceph-common kmod python3-dev || true
+    - mkdir -p /etc/ceph /mnt/cephfs
+    - printf '%s\n' 'AQCypQpqu7a+NRAAcyxOgw5qocHjBvavcgjEmA==' > /etc/ceph/xiaolong.jin.secret
+    - chmod 600 /etc/ceph/xiaolong.jin.secret
+    - export CEPHFS_MONITORS="10.100.65.50,10.100.65.51,10.100.160.70:/"
+    - if ! mountpoint -q /mnt/cephfs; then
+    - mount -t ceph "$CEPHFS_MONITORS" /mnt/cephfs -o name=xiaolong.jin,secretfile=/etc/ceph/xiaolong.jin.secret
+    - fi
+    - timeout 60 bash -c 'until mountpoint -q /mnt/cephfs; do sleep 1; done'
+    - test -d /mnt/cephfs/data/processing/xiaolong.jin && echo "cephfs OK"
+    - export GLOO_SOCKET_IFNAME=$( (ip -o -4 addr show | awk "{print \$2}" | grep "^enp"; ip -o -4 addr show | awk "{print \$2}" | grep -v "^enp" | grep -v -E "^(lo|docker|veth|br-)" ) | head -n 1 )
+    - export NCCL_SOCKET_IFNAME=ib
+    - export NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_4,mlx5_5,mlx5_6,mlx5_7,mlx5_9
+    - export REPO_DIR=/mnt/cephfs/data/processing/xiaolong.jin/code/ArcherCodeR
+    - cd "$REPO_DIR"
+    - '# DO NOT `pip install -e .` here: repo pins vllm==0.7.3 and would DOWNGRADE the image vllm0.8.5 -> breaks Qwen3.'
+    - '# verl0.1 is used via CWD ($REPO_DIR/verl wins over the image-baked verl). Only add reward deps not in the image.'
+    - pip install math-verify latex2sympy2 pylatexenc antlr4-python3-runtime==4.9.3 || true
+    - python -c "import vllm; print('vllm', vllm.__version__)"
+    - export RAY_TMPDIR=/root/ray_tmp && mkdir -p "$RAY_TMPDIR"
+    - ray stop --force 2>/dev/null || true
+    - '# ----- the two knobs: model + response length -----'
+    - export MODEL_PATH=/mnt/cephfs/data/processing/xiaolong.jin/models/Qwen3-4B
+    - export MAX_RESP_LEN=16384
+    - export PROJECT_NAME=qwen3-4b-16k
+    - export EXP_NAME=__EXP__
+    - export ADV_ESTIMATOR=__ADV__
+    - '# enforce_eager=True passed via $@ : vllm0.8 compiles by default; eager avoids it (proven colocated path).'
+    - bash "$REPO_DIR/ltp/run_swe_rl_ltp.sh" actor_rollout_ref.rollout.enforce_eager=True
+    - echo "FINISHED 4b __ADV__"
+    - sleep 30m
+defaults:
+  virtualCluster: h200posttraining
+extras:
+  com.microsoft.pai.runtimeplugin:
+  - plugin: ssh
+    parameters:
+      jobssh: true
+  jobStatusChangeNotification:
+    running: true
+    succeeded: true
+    failed: true
+  hivedScheduler:
+    taskRoles:
+      taskrole:
+        skuNum: 8
+        skuType: h200

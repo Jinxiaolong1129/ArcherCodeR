@@ -1,0 +1,30 @@
+# ============================================================
+# archer2.0-env:v2 — bake DEPENDENCIES only, keep verl source editable from cephfs.
+#
+# Build on a docker-capable host (e.g. the US node):
+#   docker build --platform linux/amd64 -f ltp/Dockerfile.archer-v2 \
+#     -t jxldragon/archer2.0-env:v2 .
+#   docker push jxldragon/archer2.0-env:v2
+# Then on cpu-2 (intranet) mirror it to the LTP registry:
+#   crane copy jxldragon/archer2.0-env:v2 \
+#     registry-tmp.zhilicon.com:5000/jxldragon/archer2.0-env:v2
+#
+# At JOB RUNTIME (inside the container, against the cephfs repo) do the editable
+# registration so your locally-modified verl is always live:
+#   cd /mnt/cephfs/.../ArcherCodeR && pip install -e . --no-deps
+# (--no-deps => no network, instant; deps are already baked below.)
+# ============================================================
+
+# Your existing minimal image already has torch==2.5.1 (cu124) + flash_attn==2.7.3.
+FROM jxldragon/archer2.0-env:latest
+
+# Bake the dependency set only. setup.py's install_requires IS requirements.txt,
+# so this installs exactly the deps that `pip install -e .` would — minus the
+# editable verl package itself (that gets registered at runtime against cephfs).
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# torch==2.5.1 and flash_attn==2.7.3 are already present and satisfy vllm==0.7.3's
+# pins, so pip keeps them. Do NOT COPY the repo or run `pip install -e .` here —
+# that would freeze the verl source path inside the image and your cephfs edits
+# would stop taking effect.

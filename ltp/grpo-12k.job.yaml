@@ -1,0 +1,73 @@
+protocolVersion: 2
+name: grpo-12k-20260613-164627
+type: job
+jobRetryCount: 0
+jobType: others
+prerequisites:
+- type: dockerimage
+  uri: registry-tmp.zhilicon.com:5000/jxldragon/archer2.0-env:latest
+  name: docker_image0
+taskRoles:
+  taskrole:
+    instances: 1
+    completion:
+      minFailedInstances: 1
+    taskRetryCount: 0
+    dockerImage: docker_image0
+    extraContainerOptions:
+      shmMB: 131072
+      infiniband: true
+    resourcePerInstance:
+      gpu: 8
+      cpu: 184
+      memoryMB: 2048000
+    commands:
+    - '#!/bin/bash'
+    - set -xeuo pipefail
+    - '# ===== 1.5B 16K main comparison: grpo on DeepSeek-R1-Distill-Qwen-1.5B, 1 node x 8 GPU ====='
+    - env
+    - nvidia-smi
+    - curl -fsSL http://10.100.197.13/user_config/bootstrap.sh | bash -s -- --all
+    - apt-get update && apt-get install -y iproute2 ceph-common kmod || true
+    - mkdir -p /etc/ceph /mnt/cephfs
+    - printf '%s\n' 'AQCypQpqu7a+NRAAcyxOgw5qocHjBvavcgjEmA==' > /etc/ceph/xiaolong.jin.secret
+    - chmod 600 /etc/ceph/xiaolong.jin.secret
+    - export CEPHFS_MONITORS="10.100.65.50,10.100.65.51,10.100.160.70:/"
+    - if ! mountpoint -q /mnt/cephfs; then
+    - mount -t ceph "$CEPHFS_MONITORS" /mnt/cephfs -o name=xiaolong.jin,secretfile=/etc/ceph/xiaolong.jin.secret
+    - fi
+    - timeout 60 bash -c 'until mountpoint -q /mnt/cephfs; do sleep 1; done'
+    - test -d /mnt/cephfs/data/processing/xiaolong.jin && echo "cephfs OK"
+    - export GLOO_SOCKET_IFNAME=$( (ip -o -4 addr show | awk "{print \$2}" | grep "^enp"; ip -o -4 addr show | awk "{print \$2}" | grep -v "^enp" | grep -v -E "^(lo|docker|veth|br-)" ) | head -n 1 )
+    - export NCCL_SOCKET_IFNAME=ib
+    - export NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_4,mlx5_5,mlx5_6,mlx5_7,mlx5_9
+    - export REPO_DIR=/mnt/cephfs/data/processing/xiaolong.jin/code/ArcherCodeR
+    - cd "$REPO_DIR"
+    - pip install --no-build-isolation -e .
+    - python -c "import verl, vllm, ray; print('verl/vllm/ray import OK', vllm.__version__)"
+    - export RAY_TMPDIR=/root/ray_tmp && mkdir -p "$RAY_TMPDIR"
+    - ray stop --force 2>/dev/null || true
+    - export MODEL_PATH=/mnt/cephfs/data/processing/xiaolong.jin/models/DeepSeek-R1-Distill-Qwen-1.5B
+    - export MAX_RESP_LEN=12288
+    - export PROJECT_NAME=r1-1.5b-12k
+    - export EXP_NAME=grpo-12k
+    - export ADV_ESTIMATOR=grpo
+    - bash "$REPO_DIR/ltp/run_swe_rl_ltp.sh"
+    - echo "FINISHED 1.5b-16k grpo-12k"
+    - sleep 30m
+defaults:
+  virtualCluster: h200pretraining2
+extras:
+  com.microsoft.pai.runtimeplugin:
+  - plugin: ssh
+    parameters:
+      jobssh: true
+  jobStatusChangeNotification:
+    running: true
+    succeeded: true
+    failed: true
+  hivedScheduler:
+    taskRoles:
+      taskrole:
+        skuNum: 8
+        skuType: h200
